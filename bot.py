@@ -1,50 +1,38 @@
-import discord, os
+import discord, os, re
+
 intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
-intents.guilds = True
 client = discord.Client(intents=intents)
 
-@client.event
-async def on_ready():
-    print(f"✅ SMITH BG EN LIGNE: {client.user}")
+def find_chan(guild, mots):
+    for c in guild.text_channels:
+        name = c.name.lower()
+        for m in mots:
+            if m in name:
+                return c
+    return None
 
-@client.event
-async def on_message(message):
-    if message.author.bot: return
-    
-    if message.content.strip().lower() in ["!creer_prives", "!creer_prive", "!prives", "creer_prives"]:
-        await message.reply("🔧 Je lance la création des salons privés manquants...")
-        guild = message.guild
-        cat = discord.utils.get(guild.categories, name="💬 DISCUSSIONS-PRIVÉES")
-        if not cat:
-            cat = await guild.create_category("💬 DISCUSSIONS-PRIVÉES")
-        
-        crees = 0
-        for member in guild.members:
-            if member.bot: continue
-            # Vérifie si il a déjà un salon (peu importe le nom)
-            a_salon = False
-            for chan in guild.text_channels:
-                if member.name.lower() in chan.name.lower() and chan.category and "PRIVÉES" in str(chan.category.name).upper():
-                    a_salon = True
-                    break
-            
-            if not a_salon:
-                overwrites = {
-                    guild.default_role: discord.PermissionOverwrite(read_messages=False),
-                    member: discord.PermissionOverwrite(read_messages=True, send_messages=True),
-                    guild.owner: discord.PermissionOverwrite(read_messages=True, send_messages=True),
-                    guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True)
-                }
-                salon = await guild.create_text_channel(f"prive-{member.name}", category=cat, overwrites=overwrites)
-                await salon.send(f"Salut {member.mention}, espace privé **Ramane | OFM** créé. On est 3 ici.")
-                crees += 1
-        
-        await message.channel.send(f"✅ Terminé ! {crees} salons privés créés.")
-        return
+def get_mention(guild, mots):
+    chan = find_chan(guild, mots)
+    return chan.mention if chan else f"#{mots[0]}"
 
-    if client.user in message.mentions:
-        await message.reply("Utilise `!prives` pour créer les salons privés.")
+def a_deja_salon(member, cat):
+    for chan in cat.text_channels:
+        if chan.overwrites_for(member).read_messages and not member.bot:
+            return chan
+    return None
 
-client.run(os.getenv("DISCORD_TOKEN"))
+def message_bienvenue_complet(member, guild):
+    # On récupère TOUS les salons importants
+    bienvenue = get_mention(guild, ["bienvenue"])
+    reglement = get_mention(guild, ["reglement", "regles"])
+    annonces = get_mention(guild, ["annonce"])
+    drive3 = get_mention(guild, ["drive-3", "drive3"])
+    drive = get_mention(guild, ["drive"])
+    entraide = get_mention(guild, ["entraide"])
+    resultats = get_mention(guild, ["resultat"])
+    boost = get_mention(guild, ["boost", "promo"])
+    idees = get_mention(guild, ["idee", "contenu"])
+
+    # Liste
