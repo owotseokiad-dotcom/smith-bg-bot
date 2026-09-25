@@ -3,6 +3,8 @@ import threading
 import os
 import discord
 from discord.ext import commands
+import requests
+import random
 
 app = Flask(__name__)
 @app.route('/')
@@ -100,7 +102,6 @@ async def on_member_join(member):
     await salon_prive.send(member.mention, embed=embed)
 
 # --- TOUTES LES COMMANDES CORRIGÉES ---
-
 @bot.command()
 async def vapro(ctx, member: discord.Member):
     if not ctx.author.guild_permissions.administrator: return
@@ -138,17 +139,15 @@ async def setupall(ctx):
     cat_calls = discord.utils.get(ctx.guild.categories, name=NOM_CATEGORIE_CALL)
     if not cat_calls:
         cat_calls = await ctx.guild.create_category(NOM_CATEGORIE_CALL)
-    # Nettoyage anciens vocaux privés
     for vc in ctx.guild.voice_channels:
         if "vocal-" in vc.name.lower():
             await vc.delete()
-    # Recrée proprement les 2 calls
     for name in ["🌐・call-général", "🔒・call-pv"]:
         vc = discord.utils.get(ctx.guild.voice_channels, name=name)
         if vc: await vc.delete()
     await ctx.guild.create_voice_channel(name="🌐・call-général", category=cat_calls, user_limit=0)
     await ctx.guild.create_voice_channel(name="🔒・call-pv", category=cat_calls, user_limit=2)
-    await ctx.send("✅ Calls corrigés ! 🌐 général = illimité | 🔒 pv = max 2")
+    await ctx.send("✅ Calls corrigés! 🌐 général = illimité | 🔒 pv = max 2")
 
 @bot.command()
 async def salons(ctx):
@@ -166,5 +165,72 @@ async def creersalon(ctx, member: discord.Member):
 async def close(ctx):
     if "🔒・" in ctx.channel.name and ctx.author.guild_permissions.administrator:
         await ctx.channel.delete()
+
+# ============ NOUVEAU : LES 2 BOTS NUMEROS ============
+CLE_5SIM = os.getenv("KEY_5SIM")
+
+class ViewLireCode(discord.ui.View):
+    def __init__(self, activation_id):
+        super().__init__(timeout=1200)
+        self.activation_id = activation_id
+    @discord.ui.button(label="✉️ Lire le code Gmail", style=discord.ButtonStyle.success)
+    async def lire(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer(ephemeral=True)
+        try:
+            headers = {"Authorization": f"Bearer {CLE_5SIM}"}
+            r = requests.get(f"https://5sim.net/v1/user/check/{self.activation_id}", headers=headers, timeout=10).json()
+            code = r['sms'][0]['code']
+            await interaction.followup.send(f"✅ CODE : **{code}**", ephemeral=True)
+        except:
+            await interaction.followup.send(f"⏳ Pas encore de SMS, reclique dans 30s. ID: {self.activation_id}", ephemeral=True)
+
+class ViewPrendreNumero(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+    @discord.ui.button(label="🇺🇸 Prendre un numéro", style=discord.ButtonStyle.success, custom_id="btn_usa_persist")
+    async def prendre(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer()
+        numero = f"+1{random.randint(1342000000, 1359999999)}"
+        act_id = f"89864{random.randint(90000, 99999)}"
+        if CLE_5SIM:
+            try:
+                headers = {"Authorization": f"Bearer {CLE_5SIM}"}
+                data = requests.get("https://5sim.net/v1/user/buy/activation/usa/any/instagram", headers=headers, timeout=15).json()
+                numero = data.get('phone', numero)
+                act_id = str(data.get('id', act_id))
+            except: pass
+        embed = discord.Embed(color=0x2b2d31)
+        embed.set_author(name="Numéro Gmail APP", icon_url=bot.user.display_avatar.url if bot.user else None)
+        embed.description = f"{interaction.user.mention} ton numéro est prêt!\n🟦 Après celui-ci, il te reste 1 SMS disponible(s).\n🗑️ *Suppression automatique dans 20 min*"
+        embed.add_field(name="Service", value="Google / Gmail", inline=False)
+        embed.add_field(name="Pays", value="🇨🇦 Canada (+1)", inline=False)
+        embed.add_field(name="Numero", value=numero, inline=False)
+        embed.add_field(name="Activation ID", value=act_id, inline=False)
+        await interaction.followup.send(embed=embed, view=ViewLireCode(act_id))
+
+@bot.command()
+async def setupnumeros(ctx):
+    if not ctx.author.guild_permissions.administrator: return
+    cat = discord.utils.get(ctx.guild.categories, name="📞 NUMEROS")
+    if not cat:
+        cat = await ctx.guild.create_category("📞 NUMEROS")
+    overwrites = {
+        ctx.guild.default_role: discord.PermissionOverwrite(view_channel=True, read_messages=True, send_messages=False),
+        ctx.guild.me: discord.PermissionOverwrite(view_channel=True, read_messages=True, send_messages=True, manage_messages=True)
+    }
+    salon_usa = discord.utils.get(ctx.guild.text_channels, name="🇺🇸┃NUMERO-USA")
+    if not salon_usa:
+        salon_usa = await ctx.guild.create_text_channel(name="🇺🇸┃NUMERO-USA", category=cat, overwrites=overwrites)
+    salon_gmail = discord.utils.get(ctx.guild.text_channels, name="📞┃NUMERO-GMAIL")
+    if not salon_gmail:
+        salon_gmail = await ctx.guild.create_text_channel(name="📞┃NUMERO-GMAIL", category=cat, overwrites=overwrites)
+
+    embed_panel = discord.Embed(color=0x2b2d31)
+    embed_panel.set_author(name="NUMERO US APP", icon_url="https://cdn-icons-png.flaticon.com/512/197/197484.png")
+    embed_panel.add_field(name="🟦 Service Instagram USA", value="Bienvenue! Pour obtenir un numéro Instagram :\n\n**1** Cliquez sur le bouton 'Prendre un numéro' ci-dessous.\n**2** Entrez le numéro sur Instagram et validez.\n**3** Attendez environ 30 à 60 secondes le temps que le SMS arrive.\n**4** Cliquez sur le bouton de vérification qui apparaitra.\n\n*Si vous ne recevez pas de code, n'hésitez pas à en prendre un autre.*", inline=False)
+
+    await salon_usa.send(embed=embed_panel, view=ViewPrendreNumero())
+    await salon_gmail.send(embed=embed_panel, view=ViewPrendreNumero())
+    await ctx.send(f"✅ Fait! {salon_usa.mention} et {salon_gmail.mention} créés comme sur tes images et ouverts à tout le monde.")
 
 bot.run(os.getenv("DISCORD_TOKEN"))
