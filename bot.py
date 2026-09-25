@@ -38,7 +38,7 @@ async def get_or_create_role(guild, name, colour=discord.Colour.default()):
 @bot.event
 async def on_ready():
     print(f"✅ SMITH BG EN LIGNE {bot.user}")
-    bot.add_view(ViewChoixPays()) # Pour que le menu 4 pays reste après reboot
+    bot.add_view(ViewChoixPays())
 
 @bot.event
 async def on_member_join(member):
@@ -97,7 +97,6 @@ async def on_member_join(member):
     embed.set_footer(text="SMITH BG Agence • Lis #règles puis #formation-écrite")
     await salon_prive.send(member.mention, embed=embed)
 
-# --- TES ANCIENNES COMMANDES INCHANGEES ---
 @bot.command()
 async def vapro(ctx, member: discord.Member):
     if not ctx.author.guild_permissions.administrator: return
@@ -151,109 +150,4 @@ async def salons(ctx):
     embed = discord.Embed(title="📍 TOUS NOS SALONS SMITH BG", description=liste, color=0xFF006A)
     await ctx.send(embed=embed)
 
-@bot.command()
-async def creersalon(ctx, member: discord.Member):
-    if not ctx.author.guild_permissions.administrator: return
-    await on_member_join(member)
-    await ctx.send(f"✅ Salon recréé pour {member.mention}")
-
-@bot.command()
-async def close(ctx):
-    if "🔒・" in ctx.channel.name and ctx.author.guild_permissions.administrator:
-        await ctx.channel.delete()
-
-# ============ PARTIE NUMEROS - MODIFIEE COMME TU AS DEMANDE ============
-CLE_5SIM = os.getenv("KEY_5SIM")
-
-class ViewLireCode(discord.ui.View):
-    def __init__(self, activation_id):
-        super().__init__(timeout=1200)
-        self.activation_id = activation_id
-    @discord.ui.button(label="✉️ Lire le code", style=discord.ButtonStyle.success)
-    async def lire(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.defer(ephemeral=True)
-        try:
-            headers = {"Authorization": f"Bearer {CLE_5SIM}"}
-            r = requests.get(f"https://5sim.net/v1/user/check/{self.activation_id}", headers=headers, timeout=10).json()
-            code = r['sms'][0]['code']
-            await interaction.followup.send(f"✅ CODE : **{code}**", ephemeral=True)
-        except:
-            await interaction.followup.send(f"⏳ Pas encore de SMS, reclique dans 30s. ID: {self.activation_id}", ephemeral=True)
-
-class SelectPays(discord.ui.Select):
-    def __init__(self):
-        options = [
-            discord.SelectOption(label="USA", value="usa", emoji="🇺🇸"),
-            discord.SelectOption(label="Canada", value="canada", emoji="🇨🇦"),
-            discord.SelectOption(label="Angleterre", value="england", emoji="🇬🇧"),
-            discord.SelectOption(label="Ukraine", value="ukraine", emoji="🇺🇦"),
-        ]
-        super().__init__(placeholder="🌍 Choisis ton pays...", min_values=1, max_values=1, options=options, custom_id="choix_pays_4")
-
-    async def callback(self, interaction: discord.Interaction):
-        await interaction.response.defer(ephemeral=True)
-        pays = self.values[0]
-        numero = f"+1{random.randint(2000000000, 9999999999)}"
-        act_id = f"89864{random.randint(90000, 99999)}"
-        if CLE_5SIM:
-            try:
-                headers = {"Authorization": f"Bearer {CLE_5SIM}"}
-                data = requests.get(f"https://5sim.net/v1/user/buy/activation/{pays}/any/google", headers=headers, timeout=15).json()
-                numero = data.get('phone', numero)
-                act_id = str(data.get('id', act_id))
-            except: pass
-
-        embed = discord.Embed(color=0x2b2d31, title="✅ Numéro prêt", description="**Seul toi vois ce message**")
-        embed.add_field(name="Pays", value=pays.upper(), inline=True)
-        embed.add_field(name="Numero", value=numero, inline=True)
-        embed.add_field(name="ID", value=act_id, inline=False)
-        await interaction.followup.send(embed=embed, view=ViewLireCode(act_id), ephemeral=True)
-
-        logs = discord.utils.get(interaction.guild.text_channels, name="logs-numeros")
-        if logs:
-            await logs.send(f"👤 {interaction.user.mention} | {pays} | {numero} | {act_id}")
-
-class ViewChoixPays(discord.ui.View):
-    def __init__(self):
-        super().__init__(timeout=None)
-        self.add_item(SelectPays())
-
-@bot.command()
-async def setupnumeros(ctx):
-    if not ctx.author.guild_permissions.administrator: return
-    cat = discord.utils.get(ctx.guild.categories, name="📞 NUMEROS")
-    if not cat:
-        cat = await ctx.guild.create_category("📞 NUMEROS")
-
-    # NETTOYAGE pour ton screen - supprime les 6 salons en trop
-    for ch in list(ctx.guild.text_channels):
-        if "numero" in ch.name.lower():
-            try: await ch.delete()
-            except: pass
-
-    overwrites = {
-        ctx.guild.default_role: discord.PermissionOverwrite(view_channel=True, read_messages=True, send_messages=False),
-        ctx.guild.me: discord.PermissionOverwrite(view_channel=True, read_messages=True, send_messages=True, manage_messages=True)
-    }
-    salon_usa = await ctx.guild.create_text_channel(name="🇺🇸┃numero-usa", category=cat, overwrites=overwrites)
-    salon_gmail = await ctx.guild.create_text_channel(name="📞┃numero-gmail", category=cat, overwrites=overwrites)
-
-    overwrites_logs = {
-        ctx.guild.default_role: discord.PermissionOverwrite(view_channel=False),
-        ctx.guild.me: discord.PermissionOverwrite(view_channel=True, read_messages=True, send_messages=True)
-    }
-    for r in ctx.guild.roles:
-        if r.permissions.administrator or "Manager" in r.name:
-            overwrites_logs[r] = discord.PermissionOverwrite(view_channel=True, read_messages=True, send_messages=True)
-
-    logs = discord.utils.get(ctx.guild.text_channels, name="logs-numeros")
-    if not logs:
-        logs = await ctx.guild.create_text_channel(name="logs-numeros", category=cat, overwrites=overwrites_logs)
-
-    embed_panel = discord.Embed(color=0x2b2d31, title="📞 Choisis ton numéro", description="Sélectionne le pays :\n\n🇺🇸 USA\n🇨🇦 Canada\n🇬🇧 Angleterre\n🇺🇦 Ukraine\n\n**Seul toi verras ton numéro**")
-
-    await salon_usa.send(embed=embed_panel, view=ViewChoixPays())
-    await salon_gmail.send(embed=embed_panel, view=ViewChoixPays())
-    await ctx.send(f"✅ Fait! J'ai gardé que 2 salons comme demandé : {salon_usa.mention} et {salon_gmail.mention}")
-
-bot.run(os.getenv("DISCORD_TOKEN"))
+@bot
