@@ -23,12 +23,12 @@ client_ai = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 derniere_activite = defaultdict(lambda: datetime.now())
 deja_relance = {}
-last_reply = {} # Anti-spam
+last_reply = {}
 
 SALONS = {
     "bienvenue": "bienvenue",
     "entraide": "entraide-général",
-    "bilan": "bilan-session-de-problème",
+    "bilan": "bilan-session-de-progression",
     "support": "support-créer",
     "reel": "reel-dessa",
     "ciblage": "correction-mauvais-ciblage",
@@ -49,7 +49,7 @@ SALONS DISPONIBLES : {SALONS}
 TON JOB :
 1. Tu réponds à TOUT : Gmail bloqué, création compte Insta, Reels 0 vues, bio, pseudo, photo, shadowban, bloqué, paiement.
 2. Tu donnes la solution en 2-3 étapes claires et directes.
-3. Tu rediriges TOUJOURS vers le bon salon.
+3. Tu rediriges TOUJOURS vers le bon salon avec un vrai tag.
 4. Style : jeune, grand frère street, tu tutoies, motivant, max 6 lignes.
 5. Tu ne dis JAMAIS que tu es une IA. Tu es Smith BG.
 """
@@ -61,22 +61,29 @@ async def on_ready():
 
 @bot.event
 async def on_member_join(member):
-    # ton code de bienvenue reste identique
     guild = member.guild
     try:
         categorie = discord.utils.get(guild.categories, name="DISCUSSIONS-PRIVÉES")
         if not categorie:
             categorie = await guild.create_category("DISCUSSIONS-PRIVÉES")
+
+        # On cherche les vrais salons pour avoir des tags BLEUS cliquables
+        form_chan = discord.utils.get(guild.text_channels, name=SALONS["formation"])
+        bilan_chan = discord.utils.get(guild.text_channels, name=SALONS["bilan"])
+
+        form_mention = form_chan.mention if form_chan else f"#{SALONS['formation']}"
+        bilan_mention = bilan_chan.mention if bilan_chan else f"#{SALONS['bilan']}"
+
         salon_nom = member.name.lower().replace(" ", "-")
         salon_existant = discord.utils.get(guild.text_channels, name=salon_nom)
         if not salon_existant:
             overwrites = {
-                guild.default_role: discord.PermissionOverwrite(read_messages=False),
-                member: discord.PermissionOverwrite(read_messages=True, send_messages=True),
-                guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True, manage_messages=True)
+                guild.default_role: discord.PermissionOverwrite(view_channel=False),
+                member: discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True),
+                guild.me: discord.PermissionOverwrite(view_channel=True, send_messages=True, manage_messages=True, manage_channels=True)
             }
             salon_prive = await guild.create_text_channel(salon_nom, category=categorie, overwrites=overwrites)
-            await salon_prive.send(f"Bienvenue {member.mention} chez RAMANE OFM 🔥\nMoi c'est Smith BG, ton manager perso. Ici c'est ton QG privé.\n1. Va dans #{SALONS['formation']}\n2. Si t'es bloqué dis-le ici direct\n3. Poste ton avancée dans #{SALONS['bilan']}")
+            await salon_prive.send(f"Bienvenue {member.mention} chez RAMANE OFM 🔥\nMoi c'est Smith BG, ton manager perso. Ici c'est ton QG privé.\n1. Va dans {form_mention}\n2. Si t'es bloqué dis-le ici direct\n3. Poste ton avancée dans {bilan_mention}")
         derniere_activite[member.id] = datetime.now()
     except Exception as e:
         print(f"Erreur on_member_join: {e}")
@@ -86,7 +93,6 @@ async def on_message(message):
     if message.author.bot: return
     derniere_activite[message.author.id] = datetime.now()
 
-    # ANTI-SPAM : si même message dans les 15 sec, on ignore
     key = f"{message.author.id}_{message.content}"
     if key in last_reply and (datetime.now() - last_reply[key]).seconds < 15:
         return
@@ -95,7 +101,7 @@ async def on_message(message):
     msg_lower = message.content.lower()
     keywords = ["insta","instagram","reel","story","vues","abonné","follower","algo","shadowban","compte","bloqué","banni","piraté","gmail","créer","création","bio","pseudo","photo","caption","paiement","aide","problème","souci","quoi poster"]
 
-    doit_repondre = (bot.user in message.mentions or any(k in msg_lower for k in keywords) or message.channel.name in ["entraide-général", "bilan-session-de-problème"] or (message.channel.category and message.channel.category.name == "DISCUSSIONS-PRIVÉES"))
+    doit_repondre = (bot.user in message.mentions or any(k in msg_lower for k in keywords) or message.channel.name in ["entraide-général", "bilan-session-de-progression"] or (message.channel.category and message.channel.category.name == "DISCUSSIONS-PRIVÉES"))
 
     if doit_repondre:
         async with message.channel.typing():
@@ -108,14 +114,13 @@ async def on_message(message):
                 )
                 await message.reply(completion.choices[0].message.content)
             except Exception as e:
-                print(f"Erreur IA: {e}") # Va afficher la vraie erreur dans les logs Render
+                print(f"Erreur IA: {e}")
                 await message.reply(f"Yes {message.author.mention} je suis là 🔥 Dis-moi exactement où t'es bloqué et je te débloque direct. Check #{SALONS['formation']} en attendant 👀")
 
     await bot.process_commands(message)
 
 @tasks.loop(hours=12)
 async def check_inactifs():
-    # ton code de relance auto reste identique
     print("Check inactifs...")
     for guild in bot.guilds:
         categorie = discord.utils.get(guild.categories, name="DISCUSSIONS-PRIVÉES")
@@ -133,4 +138,5 @@ async def check_inactifs():
             except Exception as e:
                 print(f"Erreur relance: {e}")
 
-bot.run(os.getenv("TOKEN"))
+# CORRECTION ICI -> DISCORD_TOKEN
+bot.run(os.getenv("DISCORD_TOKEN"))
