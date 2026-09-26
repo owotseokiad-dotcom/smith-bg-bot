@@ -55,12 +55,24 @@ async def on_member_join(member):
         await guild.create_voice_channel(name="🌐・call-général", category=cat_calls, user_limit=0)
     if not discord.utils.get(guild.voice_channels, name="🔒・call-pv"):
         await guild.create_voice_channel(name="🔒・call-pv", category=cat_calls, user_limit=2)
+
+    role_manager = discord.utils.get(guild.roles, name=NOM_ROLE_MANAGER)
+    role_teamleader = discord.utils.get(guild.roles, name="Team Leader")
+    if not role_teamleader:
+        role_teamleader = discord.utils.get(guild.roles, name="team leader")
+
     overwrites = {
         guild.default_role: discord.PermissionOverwrite(read_messages=False),
         member: discord.PermissionOverwrite(read_messages=True, send_messages=True),
-        guild.me: discord.PermissionOverwrite(read_messages=True)
+        guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True)
     }
+    if role_manager:
+        overwrites[role_manager] = discord.PermissionOverwrite(read_messages=True, send_messages=True)
+    if role_teamleader:
+        overwrites[role_teamleader] = discord.PermissionOverwrite(read_messages=True, send_messages=True)
+
     salon_prive = await guild.create_text_channel(name=f"🔒・{member.name.lower()}", category=categorie, overwrites=overwrites)
+
     embed = discord.Embed(title=f"👋 Bienvenue {member.name} chez SMITH BG", description="**AGENCE OFM - Voici le plan du serveur**", color=0xFF006A)
     embed.add_field(name="🏠 ACCUEIL - Commence ici", value=f"""
 > {get_ch(guild,'bienvenue')} - Message de bienvenue
@@ -150,4 +162,68 @@ async def salons(ctx):
     embed = discord.Embed(title="📍 TOUS NOS SALONS SMITH BG", description=liste, color=0xFF006A)
     await ctx.send(embed=embed)
 
-@bot
+@bot.command()
+async def creersalon(ctx, member: discord.Member):
+    if not ctx.author.guild_permissions.administrator: return
+    await on_member_join(member)
+    await ctx.send(f"✅ Salon recréé pour {member.mention}")
+
+@bot.command()
+async def close(ctx):
+    if "🔒・" in ctx.channel.name and ctx.author.guild_permissions.administrator:
+        await ctx.channel.delete()
+
+CLE_5SIM = os.getenv("KEY_5SIM")
+
+class ViewLireCode(discord.ui.View):
+    def __init__(self, activation_id):
+        super().__init__(timeout=1200)
+        self.activation_id = activation_id
+    @discord.ui.button(label="✉️ Lire le code", style=discord.ButtonStyle.success)
+    async def lire(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer(ephemeral=True)
+        try:
+            headers = {"Authorization": f"Bearer {CLE_5SIM}"}
+            r = requests.get(f"https://5sim.net/v1/user/check/{self.activation_id}", headers=headers, timeout=10).json()
+            code = r['sms'][0]['code']
+            await interaction.followup.send(f"✅ CODE : **{code}**", ephemeral=True)
+        except:
+            await interaction.followup.send(f"⏳ Pas encore de SMS, reclique dans 30s. ID: {self.activation_id}", ephemeral=True)
+
+class SelectPays(discord.ui.Select):
+    def __init__(self):
+        options = [
+            discord.SelectOption(label="USA", value="usa", emoji="🇺🇸"),
+            discord.SelectOption(label="Canada", value="canada", emoji="🇨🇦"),
+            discord.SelectOption(label="Angleterre", value="england", emoji="🇬🇧"),
+            discord.SelectOption(label="Ukraine", value="ukraine", emoji="🇺🇦"),
+        ]
+        super().__init__(placeholder="🌍 Choisis ton pays...", min_values=1, max_values=1, options=options, custom_id="choix_pays_4")
+    async def callback(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
+        pays = self.values[0]
+        numero = f"+1{random.randint(2000000000, 9999999999)}"
+        act_id = f"89864{random.randint(90000, 99999)}"
+        if CLE_5SIM:
+            try:
+                headers = {"Authorization": f"Bearer {CLE_5SIM}"}
+                data = requests.get(f"https://5sim.net/v1/user/buy/activation/{pays}/any/google", headers=headers, timeout=15).json()
+                numero = data.get('phone', numero)
+                act_id = str(data.get('id', act_id))
+            except: pass
+        embed = discord.Embed(color=0x2b2d31, title="✅ Numéro prêt", description="**Seul toi vois ce message**")
+        embed.add_field(name="Pays", value=pays.upper(), inline=True)
+        embed.add_field(name="Numero", value=numero, inline=True)
+        embed.add_field(name="ID", value=act_id, inline=False)
+        await interaction.followup.send(embed=embed, view=ViewLireCode(act_id), ephemeral=True)
+        logs = discord.utils.get(interaction.guild.text_channels, name="logs-numeros")
+        if logs:
+            await logs.send(f"👤 {interaction.user.mention} | {pays} | {numero} | {act_id}")
+
+class ViewChoixPays(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+        self.add_item(SelectPays())
+
+@bot.command()
+async def setupnumer
