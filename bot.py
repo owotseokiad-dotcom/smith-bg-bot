@@ -72,41 +72,9 @@ async def on_member_join(member):
         overwrites[role_teamleader] = discord.PermissionOverwrite(read_messages=True, send_messages=True)
 
     salon_prive = await guild.create_text_channel(name=f"🔒・{member.name.lower()}", category=categorie, overwrites=overwrites)
-
     embed = discord.Embed(title=f"👋 Bienvenue {member.name} chez SMITH BG", description="**AGENCE OFM - Voici le plan du serveur**", color=0xFF006A)
-    embed.add_field(name="🏠 ACCUEIL - Commence ici", value=f"""
-> {get_ch(guild,'bienvenue')} - Message de bienvenue
-> {get_ch(guild,'règles')} - Règles du serveur
-> {get_ch(guild,'paiement')} - Infos paiement
-> {get_ch(guild,'période-dessai')} - Ta période d'essai
-> {get_ch(guild,'parrainage')} - Parrainage
-> {get_ch(guild,'support-créer')} - Créer un ticket
-""", inline=False)
-    embed.add_field(name="📢 ANNONCES OFFICIELLES", value=f"""
-> {get_ch(guild,'annonces-officielles')} - Annonces importantes
-> {get_ch(guild,'résultats-clics')} - Résultats des membres
-> {get_ch(guild,'bilan-session')} - Bilan prospection
-> {get_ch(guild,'preuves-paiement')} - Preuves de paiement
-""", inline=False)
-    embed.add_field(name="🎓 FORMATION", value=f"""
-> {get_ch(guild,'formation-écrite')} - Formation écrite complète
-> {get_ch(guild,'création-compte')} - Créer un compte Insta
-> {get_ch(guild,'story-cta')} - Story qui vend
-> {get_ch(guild,'tutoriel-création')} - Tutoriel création
-> {get_ch(guild,'reel-dessai')} - Test tes Reels
-> {get_ch(guild,'correction-mauvais')} - Correction d'erreurs
-""", inline=False)
-    embed.add_field(name="💎 CONTENU - Le plus important", value=f"""
-> {get_ch(guild,'pseudos')} - Idées de pseudos
-> {get_ch(guild,'bio')} - Bio parfaite
-> {get_ch(guild,'comptes-à-suivre')} - Comptes modèles
-> {get_ch(guild,'caption-story')} - Textes de vente
-> {get_ch(guild,'photos-story')} - Photos Story CTA
-> {get_ch(guild,'description')} - Descriptions
-> {get_ch(guild,'drive')} - Drive avec toutes les ressources
-""", inline=False)
-    embed.add_field(name="🔒 TON SALON PRIVÉ", value=f"Tu es ici {salon_prive.mention}\nVocal: {get_ch(guild,'call-pv')} (max 2) et {get_ch(guild,'call-général')}\nEnvoie ton @ Insta et tape ton besoin : **1** Followers | **2** Vues | **3** Reels | **4** Gestion | **5** Devis", inline=False)
-    embed.set_footer(text="SMITH BG Agence • Lis #règles puis #formation-écrite")
+    embed.add_field(name="🏠 ACCUEIL - Commence ici", value=f"> {get_ch(guild,'bienvenue')}\n> {get_ch(guild,'règles')}\n> {get_ch(guild,'paiement')}", inline=False)
+    embed.set_footer(text="SMITH BG Agence")
     await salon_prive.send(member.mention, embed=embed)
 
 @bot.command()
@@ -114,14 +82,14 @@ async def vapro(ctx, member: discord.Member):
     if not ctx.author.guild_permissions.administrator: return
     role = await get_or_create_role(ctx.guild, NOM_ROLE_VAPRO, discord.Color.purple())
     await member.add_roles(role)
-    await ctx.send(f"✅ {member.mention} est **VA Pro**")
+    await ctx.send(f"✅ {member.mention} est VA Pro")
 
 @bot.command()
 async def role(ctx, member: discord.Member, *, nom_role: str):
     if not ctx.author.guild_permissions.administrator: return
     role = await get_or_create_role(ctx.guild, nom_role)
     await member.add_roles(role)
-    await ctx.send(f"✅ {member.mention} a reçu **{role.name}**")
+    await ctx.send(f"✅ {member.mention} a reçu {role.name}")
 
 @bot.command()
 async def removerole(ctx, member: discord.Member, *, nom_role: str):
@@ -129,7 +97,7 @@ async def removerole(ctx, member: discord.Member, *, nom_role: str):
     role = discord.utils.get(ctx.guild.roles, name=nom_role)
     if role:
         await member.remove_roles(role)
-        await ctx.send(f"🗑️ **{role.name}** retiré à {member.mention}")
+        await ctx.send(f"🗑️ {role.name} retiré à {member.mention}")
 
 @bot.command()
 async def manager(ctx, member: discord.Member):
@@ -138,7 +106,7 @@ async def manager(ctx, member: discord.Member):
     await member.add_roles(role)
     try: await member.edit(nick=f"Manager | {member.name}")
     except: pass
-    await ctx.send(f"👑 {member.mention} est maintenant **Manager | {member.name}**")
+    await ctx.send(f"👑 {member.mention} est maintenant Manager")
 
 @bot.command()
 async def setupall(ctx):
@@ -154,12 +122,12 @@ async def setupall(ctx):
         if vc: await vc.delete()
     await ctx.guild.create_voice_channel(name="🌐・call-général", category=cat_calls, user_limit=0)
     await ctx.guild.create_voice_channel(name="🔒・call-pv", category=cat_calls, user_limit=2)
-    await ctx.send("✅ Calls corrigés! 🌐 général = illimité | 🔒 pv = max 2")
+    await ctx.send("✅ Calls corrigés!")
 
 @bot.command()
 async def salons(ctx):
     liste = "\n".join([f"{ch.mention}" for ch in ctx.guild.text_channels])
-    embed = discord.Embed(title="📍 TOUS NOS SALONS SMITH BG", description=liste, color=0xFF006A)
+    embed = discord.Embed(title="📍 TOUS NOS SALONS", description=liste, color=0xFF006A)
     await ctx.send(embed=embed)
 
 @bot.command()
@@ -226,4 +194,138 @@ class ViewChoixPays(discord.ui.View):
         self.add_item(SelectPays())
 
 @bot.command()
-async def setupnumer
+async def setupnumeros(ctx):
+    if not ctx.author.guild_permissions.administrator: return
+    cat = discord.utils.get(ctx.guild.categories, name="📞 NUMEROS")
+    if not cat:
+        cat = await ctx.guild.create_category("📞 NUMEROS")
+    for ch in list(ctx.guild.text_channels):
+        if "numero" in ch.name.lower():
+            try: await ch.delete()
+            except: pass
+    overwrites = {
+        ctx.guild.default_role: discord.PermissionOverwrite(view_channel=True, read_messages=True, send_messages=False),
+        ctx.guild.me: discord.PermissionOverwrite(view_channel=True, read_messages=True, send_messages=True, manage_messages=True)
+    }
+    salon_usa = await ctx.guild.create_text_channel(name="🇺🇸┃numero-usa", category=cat, overwrites=overwrites)
+    salon_gmail = await ctx.guild.create_text_channel(name="📞┃numero-gmail", category=cat, overwrites=overwrites)
+    overwrites_logs = {
+        ctx.guild.default_role: discord.PermissionOverwrite(view_channel=False),
+        ctx.guild.me: discord.PermissionOverwrite(view_channel=True, read_messages=True, send_messages=True)
+    }
+    for r in ctx.guild.roles:
+        if r.permissions.administrator or "Manager" in r.name or "Team Leader" in r.name:
+            overwrites_logs[r] = discord.PermissionOverwrite(view_channel=True, read_messages=True, send_messages=True)
+    logs = discord.utils.get(ctx.guild.text_channels, name="logs-numeros")
+    if not logs:
+        logs = await ctx.guild.create_text_channel(name="logs-numeros", category=cat, overwrites=overwrites_logs)
+    embed_panel = discord.Embed(color=0x2b2d31, title="📞 Choisis ton numéro", description="Sélectionne le pays :\n\n🇺🇸 USA\n🇨🇦 Canada\n🇬🇧 Angleterre\n🇺🇦 Ukraine\n\n**Seul toi verras ton numéro**")
+    await salon_usa.send(embed=embed_panel, view=ViewChoixPays())
+    await salon_gmail.send(embed=embed_panel, view=ViewChoixPays())
+    await ctx.send(f"✅ 2 salons numéros créés : {salon_usa.mention} et {salon_gmail.mention}")
+
+@bot.command()
+async def grille(ctx):
+    if not ctx.author.guild_permissions.administrator: return
+    salon_paiement = None
+    for ch in ctx.guild.text_channels:
+        if "paiement" in ch.name.lower() or "paiment" in ch.name.lower():
+            salon_paiement = ch
+            break
+    if not salon_paiement:
+        await ctx.send("❌ Je trouve pas #paiement")
+        return
+    embed = discord.Embed(title="📊 Grille de Paie 🤑", description="Plus tu montes en subs, plus ton $/sub augmente 🔥 (selon ton total de subs)", color=0xFFD700)
+    embed.add_field(name="👑 Paliers", value="De 0 à 500 subs → **0,50$ / sub**\nDe 500 à 700 subs → **0,60$ / sub**\nDe 700 à 800 subs → **0,70$ / sub**\nDe 800 à 1000 subs → **0,80$ / sub**\nDe 1000 à 1500 subs → **1$ / sub**\nDe 1500 à 2000 subs → **1,10$ / sub**", inline=False)
+    embed.add_field(name="💸 Paiement", value="**Payé chaque DIMANCHE** — chaque semaine, pas toutes les 2 semaines comme les autres agences.\nPlus tu postes = plus tu montes = plus chaque sub rapporte.", inline=False)
+    embed.set_footer(text="SMITH BG Agence")
+    await salon_paiement.send("@everyone", embed=embed)
+    await ctx.send(f"✅ Grille envoyée dans {salon_paiement.mention}")
+
+@bot.command()
+async def fixsalons(ctx):
+    if not ctx.author.guild_permissions.administrator: return
+    role_manager = discord.utils.get(ctx.guild.roles, name=NOM_ROLE_MANAGER)
+    role_teamleader = discord.utils.get(ctx.guild.roles, name="Team Leader")
+    if not role_teamleader:
+        role_teamleader = discord.utils.get(ctx.guild.roles, name="team leader")
+    if not role_teamleader:
+        role_teamleader = await get_or_create_role(ctx.guild, "Team Leader", discord.Colour.green())
+    categorie = discord.utils.get(ctx.guild.categories, name=NOM_CATEGORIE)
+    if not categorie:
+        await ctx.send("❌ Catégorie CLIENTS pas trouvée")
+        return
+    count = 0
+    for ch in categorie.text_channels:
+        if "🔒・" in ch.name:
+            try:
+                if role_manager:
+                    await ch.set_permissions(role_manager, read_messages=True, send_messages=True)
+                if role_teamleader:
+                    await ch.set_permissions(role_teamleader, read_messages=True, send_messages=True)
+                count += 1
+            except: pass
+    await ctx.send(f"✅ Accès Manager + Team Leader ajouté sur {count} salons privés")
+
+@bot.command()
+async def setupfinal(ctx):
+    if not ctx.author.guild_permissions.administrator: return
+    await ctx.send("🚀 Je répare tout...")
+    role_manager = discord.utils.get(ctx.guild.roles, name=NOM_ROLE_MANAGER)
+    role_teamleader = discord.utils.get(ctx.guild.roles, name="Team Leader")
+    if not role_teamleader:
+        role_teamleader = discord.utils.get(ctx.guild.roles, name="team leader")
+    if not role_teamleader:
+        role_teamleader = await get_or_create_role(ctx.guild, "Team Leader", discord.Colour.green())
+    categorie = discord.utils.get(ctx.guild.categories, name=NOM_CATEGORIE)
+    count = 0
+    if categorie:
+        for ch in categorie.text_channels:
+            if "🔒・" in ch.name:
+                try:
+                    if role_manager:
+                        await ch.set_permissions(role_manager, read_messages=True, send_messages=True)
+                    if role_teamleader:
+                        await ch.set_permissions(role_teamleader, read_messages=True, send_messages=True)
+                    count += 1
+                except: pass
+    cat_num = discord.utils.get(ctx.guild.categories, name="📞 NUMEROS")
+    if not cat_num:
+        cat_num = await ctx.guild.create_category("📞 NUMEROS")
+    for ch in list(ctx.guild.text_channels):
+        if "numero" in ch.name.lower():
+            try: await ch.delete()
+            except: pass
+    overwrites = {
+        ctx.guild.default_role: discord.PermissionOverwrite(view_channel=True, read_messages=True, send_messages=False),
+        ctx.guild.me: discord.PermissionOverwrite(view_channel=True, read_messages=True, send_messages=True, manage_messages=True)
+    }
+    salon_usa = await ctx.guild.create_text_channel(name="🇺🇸┃numero-usa", category=cat_num, overwrites=overwrites)
+    salon_gmail = await ctx.guild.create_text_channel(name="📞┃numero-gmail", category=cat_num, overwrites=overwrites)
+    overwrites_logs = {
+        ctx.guild.default_role: discord.PermissionOverwrite(view_channel=False),
+        ctx.guild.me: discord.PermissionOverwrite(view_channel=True, read_messages=True, send_messages=True)
+    }
+    for r in ctx.guild.roles:
+        if r.permissions.administrator or "Manager" in r.name or "Team Leader" in r.name:
+            overwrites_logs[r] = discord.PermissionOverwrite(view_channel=True, read_messages=True, send_messages=True)
+    logs = discord.utils.get(ctx.guild.text_channels, name="logs-numeros")
+    if not logs:
+        logs = await ctx.guild.create_text_channel(name="logs-numeros", category=cat_num, overwrites=overwrites_logs)
+    embed_panel = discord.Embed(color=0x2b2d31, title="📞 Choisis ton numéro", description="Sélectionne le pays :\n\n🇺🇸 USA\n🇨🇦 Canada\n🇬🇧 Angleterre\n🇺🇦 Ukraine\n\n**Seul toi verras ton numéro**")
+    await salon_usa.send(embed=embed_panel, view=ViewChoixPays())
+    await salon_gmail.send(embed=embed_panel, view=ViewChoixPays())
+    salon_paiement = None
+    for ch in ctx.guild.text_channels:
+        if "paiement" in ch.name.lower() or "paiment" in ch.name.lower():
+            salon_paiement = ch
+            break
+    if salon_paiement:
+        embed = discord.Embed(title="📊 Grille de Paie 🤑", description="Plus tu montes en subs, plus ton $/sub augmente 🔥 (selon ton total de subs)", color=0xFFD700)
+        embed.add_field(name="👑 Paliers", value="De 0 à 500 subs → **0,50$ / sub**\nDe 500 à 700 subs → **0,60$ / sub**\nDe 700 à 800 subs → **0,70$ / sub**\nDe 800 à 1000 subs → **0,80$ / sub**\nDe 1000 à 1500 subs → **1$ / sub**\nDe 1500 à 2000 subs → **1,10$ / sub**", inline=False)
+        embed.add_field(name="💸 Paiement", value="**Payé chaque DIMANCHE** — chaque semaine, pas toutes les 2 semaines comme les autres agences.\nPlus tu postes = plus tu montes = plus chaque sub rapporte.", inline=False)
+        embed.set_footer(text="SMITH BG Agence")
+        await salon_paiement.send("@everyone", embed=embed)
+    await ctx.send(f"✅ TOUT FAIT : {count} salons réparés + 2 salons numéros + grille envoyée")
+
+bot.run(os.getenv("DISCORD_TOKEN"))
