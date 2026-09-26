@@ -51,7 +51,6 @@ async def get_drive_reels_grouped(guild):
     salons_drive = [ch for ch in guild.text_channels if "drive" in ch.name.lower()]
     if not salons_drive: return []
     salon_choisi = random.choice(salons_drive)
-    print(f"Salon choisi: {salon_choisi.name}")
     reels=[]
     async for m in salon_choisi.history(limit=500):
         for att in m.attachments:
@@ -78,7 +77,7 @@ async def get_drive_reels_grouped(guild):
                             expanded.append({'type': 'drive_file', 'id': f['id'], 'name': f['name']})
                 else: expanded.append(r)
             return expanded
-        except Exception as e: print(f"Erreur Drive: {e}")
+        except: pass
     return reels
 
 async def get_descriptions(guild):
@@ -110,7 +109,6 @@ async def delete_after(messages, minutes=15):
         try: await msg.delete()
         except: pass
 
-# ===== SEULE MODIF ICI : AJOUT BOUTON VERS PACKS-REELS =====
 class ViewPseudosFilles(discord.ui.View):
     def __init__(self): super().__init__(timeout=None)
     @discord.ui.button(label="🎀 Générer une Identité", style=discord.ButtonStyle.primary, custom_id="btn_pseudo_fille_final")
@@ -118,24 +116,17 @@ class ViewPseudosFilles(discord.ui.View):
         await interaction.response.defer(ephemeral=True)
         ps=generer_pseudo_inutilise()
         bios=await get_bios_from_salon(interaction.guild); photos=await get_photos_from_salon(interaction.guild)
-
-        # Cherche le salon packs-reels pour le lien
-        salon_pack = None
-        for ch in interaction.guild.text_channels:
-            if "packs-reels" in ch.name.lower():
-                salon_pack = ch
-                break
-
-        embed=discord.Embed(color=0xFF69B4, title="🎀 Identité Fille Générée")
+        salon_pack = discord.utils.get(interaction.guild.text_channels, name="🎯┃packs-reels")
+        embed=discord.Embed(color=0xFF69B4, title="🎀 Identité Générée - Étape 1/2")
         embed.add_field(name="👤 Pseudo Insta", value=f"`{ps}`", inline=False)
         embed.add_field(name="📝 Bio", value=f"```{random.choice(bios)[:900]}```", inline=False)
+        if salon_pack:
+            embed.add_field(name="➡️ Étape Suivante", value=f"Identité prête! Va maintenant dans {salon_pack.mention} pour prendre tes 8 Reels.", inline=False)
         if photos: embed.set_image(url=random.choice(photos))
-
-        # Vue avec bouton lien vers packs-reels
+        embed.set_footer(text="Ramane | OFM - Agence Pro")
         view_link = discord.ui.View()
         if salon_pack:
             view_link.add_item(discord.ui.Button(label="🎯 Aller dans Packs Reels", style=discord.ButtonStyle.link, url=salon_pack.jump_url, emoji="🎬"))
-
         await interaction.followup.send(embed=embed, view=view_link, ephemeral=True)
 
 class ViewPackReels(discord.ui.View):
@@ -143,45 +134,37 @@ class ViewPackReels(discord.ui.View):
     @discord.ui.button(label="🎯 Générer 8 Packs Reels", style=discord.ButtonStyle.success, custom_id="btn_pack_reels_final_v3", emoji="🎬")
     async def pack_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer(ephemeral=True)
-        await interaction.followup.send("⏳ Recherche en cours... Je cherche 8 vidéos du MÊME modèle pour toi...", ephemeral=True)
+        await interaction.followup.send("⏳ Génération en cours... Je sélectionne 8 vidéos du MÊME modèle...", ephemeral=True)
         reels=await get_drive_reels_grouped(interaction.guild); descs=await get_descriptions(interaction.guild)
         if len(reels)<8 or len(descs)<8:
-            await interaction.followup.send(f"❌ Stock insuffisant: {len(reels)}/8 vidéos (dans le salon choisi), {len(descs)}/8 descriptions. Ajoute au moins 8 vidéos par salon drive.", ephemeral=True); return
-        random.shuffle(reels); random.shuffle(descs)
-        reels = reels[:8]
+            await interaction.followup.send(f"❌ Stock insuffisant: {len(reels)}/8 vidéos, {len(descs)}/8 descriptions.", ephemeral=True); return
+        random.shuffle(reels); random.shuffle(descs); reels = reels[:8]
         salon_out=discord.utils.get(interaction.guild.text_channels, name="🎯┃packs-reels") or interaction.channel
-        try:
-            thread = await salon_out.create_thread(name=f"pack-{interaction.user.name}-{random.randint(100,999)}", type=discord.ChannelType.private_thread, auto_archive_duration=60)
-        except:
-            thread = await salon_out.create_thread(name=f"pack-{interaction.user.name}-{random.randint(100,999)}", auto_archive_duration=60)
+        try: thread = await salon_out.create_thread(name=f"pack-{interaction.user.name}-{random.randint(100,999)}", type=discord.ChannelType.private_thread, auto_archive_duration=60)
+        except: thread = await salon_out.create_thread(name=f"pack-{interaction.user.name}-{random.randint(100,999)}", auto_archive_duration=60)
         try: await thread.add_user(interaction.user)
         except: pass
-        roles_staff = ["boss", "createur", "créateur", "owner", "manager", "team leader", "team-leader", "admin"]
         for member in interaction.guild.members:
-            if any(any(x in r.name.lower() for x in [rs]) for r in member.roles for rs in roles_staff):
+            if any(r.name.lower() in ["boss","createur","créateur","owner","manager","team leader","team-leader","admin"] for r in member.roles):
                 try: await thread.add_user(member)
                 except: pass
-        await interaction.followup.send(f"✅ Pack privé créé {thread.mention} - Visible seulement par toi + Boss/Managers/Team Leaders. Suppression auto 15 min", ephemeral=True)
-        sent_messages = []
-        welcome = await thread.send(f"{interaction.user.mention} 🎬 **PACK DE 8 REELS - MÊME MODÈLE** - ⚠️ Suppression auto dans 15 min")
-        sent_messages.append(welcome)
+        await interaction.followup.send(f"✅ Pack privé créé {thread.mention} - Suppression auto 15 min", ephemeral=True)
+        sent=[]; welcome=await thread.send(f"{interaction.user.mention} 🎬 **PACK 8 REELS - MÊME MODÈLE** - ⚠️ Suppression 15 min"); sent.append(welcome)
         for i in range(8):
             r=reels[i]; d=descs[i]
             try:
                 if r['type'] == 'discord':
                     data = await bot.loop.run_in_executor(None, lambda: requests.get(r['url']).content)
                     tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4"); tmp.write(data); tmp.close()
-                    embed=discord.Embed(color=0x00FF88, title=f"PACK {i+1}/8 - MÊME MODÈLE"); embed.add_field(name="📝 DESCRIPTION", value=d.content[:1024], inline=False)
-                    msg = await thread.send(embed=embed, file=discord.File(tmp.name, filename=r['name']))
-                    sent_messages.append(msg); os.unlink(tmp.name)
+                    embed=discord.Embed(color=0x00FF88, title=f"PACK {i+1}/8"); embed.add_field(name="📝 DESCRIPTION", value=d.content[:1024], inline=False)
+                    msg=await thread.send(embed=embed, file=discord.File(tmp.name, filename=r['name'])); sent.append(msg); os.unlink(tmp.name)
                 else:
                     path = await bot.loop.run_in_executor(None, lambda: download_gdrive_file_sync(r['id']))
-                    embed=discord.Embed(color=0x00FF88, title=f"PACK {i+1}/8 - VIDÉO DIRECTE - MÊME MODÈLE"); embed.add_field(name="📝 DESCRIPTION", value=d.content[:1024], inline=False)
-                    msg = await thread.send(embed=embed, file=discord.File(path, filename=r.get('name', f"reel_{i+1}.mp4")))
-                    sent_messages.append(msg); os.unlink(path)
+                    embed=discord.Embed(color=0x00FF88, title=f"PACK {i+1}/8"); embed.add_field(name="📝 DESCRIPTION", value=d.content[:1024], inline=False)
+                    msg=await thread.send(embed=embed, file=discord.File(path, filename=r.get('name', f"reel_{i+1}.mp4"))); sent.append(msg); os.unlink(path)
             except Exception as e: print(e)
-        if sent_messages:
-            bot.loop.create_task(delete_after(sent_messages, 15))
+        if sent:
+            bot.loop.create_task(delete_after(sent, 15))
             async def delete_thread_after():
                 await asyncio.sleep(15*60)
                 try: await thread.delete()
@@ -207,24 +190,19 @@ async def setuppack(ctx):
         title="🎯 Ramane | OFM - Générateur de Packs Reels",
         description=(
             "**🤖 C'est quoi ce bot?**\n"
-            "Ce bot génère automatiquement **8 Packs Reels + Descriptions** prêts à poster sur Instagram.\n\n"
+            "Génère automatiquement **8 Packs Reels + Descriptions** prêts à poster.\n\n"
             "**⚙️ Comment ça marche?**\n"
             "1️⃣ Clique sur le bouton vert ci-dessous\n"
-            "2️⃣ Le bot choisit **1 seul modèle** (1 salon drive = 1 modèle)\n"
-            "3️⃣ Il te sort 8 vidéos **DU MÊME MODÈLE** + 8 descriptions différentes\n"
-            "4️⃣ Un thread privé s'ouvre juste pour toi + Boss / Managers / Team Leaders\n\n"
-            "**🔒 Confidentialité :**\n"
-            "• Seul toi qui a cliqué + le staff voit ton pack\n"
-            "• Les autres chatters ne voient rien\n"
-            "• Suppression automatique après 15 minutes\n\n"
-            "**📁 Pour que ça marche :**\n"
-            "Crée 1 salon par modèle : `#🎀-drive-sophie`, `#🎀-drive-mia` etc. avec au moins 8 vidéos dedans.\n\n"
-            "👇 **Clique ci-dessous pour générer ton pack**"
+            "2️⃣ Le bot choisit 1 modèle (1 salon Drive = 1 modèle)\n"
+            "3️⃣ Il te sort 8 vidéos DU MÊME MODÈLE + 8 descriptions\n"
+            "4️⃣ Thread privé pour toi + Staff uniquement\n\n"
+            "**🔒 Confidentialité :** Suppression auto 15 min\n\n"
+            "👇 **Clique ci-dessous**"
         )
     )
-    embed.set_footer(text="Ramane | OFM Agency - Pack Reels System")
+    embed.set_footer(text="Ramane | OFM Agency - Système Pro")
     await salon.send(embed=embed, view=ViewPackReels())
-    await ctx.send(f"✅ Salon recréé {salon.mention} avec description détaillée")
+    await ctx.send(f"✅ {salon.mention}")
 
 @bot.command()
 async def setupfilles(ctx):
@@ -233,15 +211,62 @@ async def setupfilles(ctx):
     salon=discord.utils.get(ctx.guild.text_channels, name="🎀┃pseudos-filles") or await ctx.guild.create_text_channel(name="🎀┃pseudos-filles", category=cat)
     embed = discord.Embed(
         color=0xFF69B4,
-        title="🎀 Ramane | OFM - Générateur d'Identités Filles",
+        title="🎀 Ramane | OFM - Générateur d'Identités",
         description=(
             "**🤖 C'est quoi ce bot?**\n"
-            "Génère un pseudo Insta inutilisé + bio + photo de profil\n\n"
-            "**Clique pour générer**"
+            "Génère un pseudo Insta pro + bio + photo de profil\n\n"
+            "**⚙️ Workflow Agence :**\n"
+            "1️⃣ Génère ton identité ici\n"
+            "2️⃣ Clique sur le bouton pour aller dans Packs Reels\n"
+            "3️⃣ Poste ton compte complet\n\n"
+            "👇 **Clique ci-dessous**"
         )
     )
+    embed.set_footer(text="Ramane | OFM - Étape 1/2")
     await salon.send(embed=embed, view=ViewPseudosFilles())
     await ctx.send(f"✅ {salon.mention}")
+
+@bot.command()
+async def setupexplications(ctx):
+    if not ctx.author.guild_permissions.administrator: return
+    await ctx.send("⏳ Mise en place pro de l'agence en cours...")
+    salon_pseudo = discord.utils.get(ctx.guild.text_channels, name="🎀┃pseudos-filles")
+    salon_pack = discord.utils.get(ctx.guild.text_channels, name="🎯┃packs-reels")
+    lien_pseudo = f"{salon_pseudo.mention}" if salon_pseudo else "`🎀┃pseudos-filles`"
+    lien_pack = f"{salon_pack.mention}" if salon_pack else "`🎯┃packs-reels`"
+    for ch in ctx.guild.text_channels:
+        name = ch.name.lower()
+        if "pseudo" in name or "pack-reels" in name: continue
+        if "drive" not in name and "bio" not in name and "pdp" not in name and "photo" not in name and "profil" not in name and "description" not in name: continue
+        has_human_explained = False
+        async for m in ch.history(limit=20):
+            if not m.author.bot and len(m.content.strip()) > 20 and "drive.google.com" not in m.content and "http" not in m.content.lower():
+                has_human_explained = True; break
+        if has_human_explained: continue
+        embed=None
+        if "drive" in name:
+            embed=discord.Embed(color=0x9B59B6, title=f"📁 {ch.name.upper()} - Stock Modèle", description=(f"**🤖 C'est quoi ce salon?**\nStock vidéos d'**UN SEUL modèle**. Toutes les vidéos = même fille.\n\n**⚙️ Comment l'utiliser?**\nToi tu ne postes rien ici. C'est le staff qui alimente.\n\n**🎯 Pour créer ton compte :**\n1️⃣ {lien_pseudo} -> **Pseudo + Bio + PDP**\n2️⃣ {lien_pack} -> **8 Reels + Descriptions** de ce modèle\n\n**⚠️ Règle d'or : 1 salon = 1 modèle**"))
+            embed.set_footer(text="Ramane | OFM - Lecture Seule - Agence Pro")
+        elif "bio" in name:
+            embed=discord.Embed(color=0x3498DB, title="📝 STOCK BIOS", description=f"**🤖 Stock Bios Instagram.**\nEnvoie 1 bio par message.\nUtilisé auto par {lien_pseudo}")
+        elif any(x in name for x in ["photo","pdp","profil"]):
+            embed=discord.Embed(color=0xE67E22, title="🖼️ STOCK PHOTOS PROFIL", description=f"**🤖 Stock PDP.**\nEnvoie tes photos ici.\nUtilisé auto par {lien_pseudo}")
+        elif "description" in name:
+            embed=discord.Embed(color=0x2ECC71, title="✍️ STOCK DESCRIPTIONS", description=f"**🤖 Stock Captions Reels.**\n1 description par message.\nUtilisé auto par {lien_pack}")
+        if embed:
+            try: await ch.send(embed=embed)
+            except: pass
+            if "drive" in name:
+                try:
+                    everyone = ctx.guild.default_role
+                    overwrite = ch.overwrites_for(everyone)
+                    overwrite.send_messages=False; overwrite.add_reactions=False
+                    overwrite.create_private_threads=False; overwrite.create_public_threads=False
+                    overwrite.send_messages_in_threads=False
+                    await ch.set_permissions(everyone, overwrite=overwrite)
+                except: pass
+            await asyncio.sleep(0.5)
+    await ctx.send(f"✅ Agence configurée pro. Drive en lecture seule + explications ajoutées. Workflow : {lien_pseudo} -> {lien_pack}")
 
 @bot.event
 async def on_message(message):
