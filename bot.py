@@ -110,6 +110,7 @@ async def delete_after(messages, minutes=15):
         try: await msg.delete()
         except: pass
 
+# ===== SEULE MODIF ICI : AJOUT BOUTON VERS PACKS-REELS =====
 class ViewPseudosFilles(discord.ui.View):
     def __init__(self): super().__init__(timeout=None)
     @discord.ui.button(label="🎀 Générer une Identité", style=discord.ButtonStyle.primary, custom_id="btn_pseudo_fille_final")
@@ -117,11 +118,25 @@ class ViewPseudosFilles(discord.ui.View):
         await interaction.response.defer(ephemeral=True)
         ps=generer_pseudo_inutilise()
         bios=await get_bios_from_salon(interaction.guild); photos=await get_photos_from_salon(interaction.guild)
+
+        # Cherche le salon packs-reels pour le lien
+        salon_pack = None
+        for ch in interaction.guild.text_channels:
+            if "packs-reels" in ch.name.lower():
+                salon_pack = ch
+                break
+
         embed=discord.Embed(color=0xFF69B4, title="🎀 Identité Fille Générée")
         embed.add_field(name="👤 Pseudo Insta", value=f"`{ps}`", inline=False)
         embed.add_field(name="📝 Bio", value=f"```{random.choice(bios)[:900]}```", inline=False)
         if photos: embed.set_image(url=random.choice(photos))
-        await interaction.followup.send(embed=embed, ephemeral=True)
+
+        # Vue avec bouton lien vers packs-reels
+        view_link = discord.ui.View()
+        if salon_pack:
+            view_link.add_item(discord.ui.Button(label="🎯 Aller dans Packs Reels", style=discord.ButtonStyle.link, url=salon_pack.jump_url, emoji="🎬"))
+
+        await interaction.followup.send(embed=embed, view=view_link, ephemeral=True)
 
 class ViewPackReels(discord.ui.View):
     def __init__(self): super().__init__(timeout=None)
@@ -187,8 +202,6 @@ async def setuppack(ctx):
             try: await ch.delete()
             except: pass
     salon=await ctx.guild.create_text_channel(name="🎯┃packs-reels", category=cat)
-
-    # ICI C'EST LA DESCRIPTION DÉTAILLÉE COMME PSEUDO-FILLES
     embed = discord.Embed(
         color=0x00FF88,
         title="🎯 Ramane | OFM - Générateur de Packs Reels",
@@ -218,7 +231,6 @@ async def setupfilles(ctx):
     if not ctx.author.guild_permissions.administrator: return
     cat=discord.utils.get(ctx.guild.categories, name="🎀 MODELES") or await ctx.guild.create_category("🎀 MODELES")
     salon=discord.utils.get(ctx.guild.text_channels, name="🎀┃pseudos-filles") or await ctx.guild.create_text_channel(name="🎀┃pseudos-filles", category=cat)
-
     embed = discord.Embed(
         color=0xFF69B4,
         title="🎀 Ramane | OFM - Générateur d'Identités Filles",
