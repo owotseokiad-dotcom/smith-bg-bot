@@ -5,7 +5,7 @@ from discord.ext import commands
 app = Flask(__name__)
 @app.route('/')
 def home(): return "RAMANE OFM EN LIGNE"
-def run_web(): app.run(host='0.0.0.0', port=10000)
+def run_web(): app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 10000)))
 threading.Thread(target=run_web, daemon=True).start()
 
 intents = discord.Intents.default()
@@ -170,7 +170,6 @@ class ViewPackReels(discord.ui.View):
                 except: pass
             bot.loop.create_task(delete_thread_after())
 
-# ================== TES ANCIENNES COMMANDES INTACTES ==================
 @bot.command()
 async def setuppack(ctx):
     if not ctx.author.guild_permissions.administrator: return
@@ -180,8 +179,7 @@ async def setuppack(ctx):
             try: await ch.delete()
             except: pass
     salon=await ctx.guild.create_text_channel(name="🎯┃packs-reels", category=cat)
-    embed = discord.Embed(color=0x00FF88, title="🎯 Ramane | OFM - Générateur de Packs Reels",
-        description="**🤖 C'est quoi ce bot?**\nGénère auto **8 Packs Reels + Descriptions** prêts à poster.\n\n**⚙️ Comment ça marche?**\n1️⃣ Clique vert ci-dessous\n2️⃣ Bot choisit 1 modèle (1 salon Drive = 1 modèle)\n3️⃣ Il te sort 8 vidéos DU MÊME MODÈLE + 8 descriptions\n4️⃣ Thread privé pour toi + Staff uniquement\n\n**🔒 Confidentialité :** Suppression auto 15 min\n\n👇 **Clique ci-dessous**")
+    embed = discord.Embed(color=0x00FF88, title="🎯 Ramane | OFM - Générateur de Packs Reels", description="**🤖 C'est quoi ce bot?**\nGénère auto **8 Packs Reels + Descriptions** prêts à poster.\n\n**⚙️ Comment ça marche?**\n1️⃣ Clique vert ci-dessous\n2️⃣ Bot choisit 1 modèle (1 salon Drive = 1 modèle)\n3️⃣ Il te sort 8 vidéos DU MÊME MODÈLE + 8 descriptions\n4️⃣ Thread privé pour toi + Staff uniquement\n\n**🔒 Confidentialité :** Suppression auto 15 min\n\n👇 **Clique ci-dessous**")
     embed.set_footer(text="Ramane | OFM Agency - Système Pro")
     await salon.send(embed=embed, view=ViewPackReels())
     await ctx.send(f"✅ {salon.mention}")
@@ -191,8 +189,7 @@ async def setupfilles(ctx):
     if not ctx.author.guild_permissions.administrator: return
     cat=discord.utils.get(ctx.guild.categories, name="🎀 MODELES") or await ctx.guild.create_category("🎀 MODELES")
     salon=discord.utils.get(ctx.guild.text_channels, name="🎀┃pseudos-filles") or await ctx.guild.create_text_channel(name="🎀┃pseudos-filles", category=cat)
-    embed = discord.Embed(color=0xFF69B4, title="🎀 Ramane | OFM - Générateur d'Identités",
-        description="**🤖 C'est quoi ce bot?**\nGénère un pseudo Insta pro + bio + photo de profil\n\n**⚙️ Workflow Agence :**\n1️⃣ Génère ton identité ici\n2️⃣ Clique pour aller dans Packs Reels\n3️⃣ Poste ton compte complet\n\n👇 **Clique ci-dessous**")
+    embed = discord.Embed(color=0xFF69B4, title="🎀 Ramane | OFM - Générateur d'Identités", description="**🤖 C'est quoi ce bot?**\nGénère un pseudo Insta pro + bio + photo de profil\n\n**⚙️ Workflow Agence :**\n1️⃣ Génère ton identité ici\n2️⃣ Clique pour aller dans Packs Reels\n3️⃣ Poste ton compte complet\n\n👇 **Clique ci-dessous**")
     embed.set_footer(text="Ramane | OFM - Étape 1/2")
     await salon.send(embed=embed, view=ViewPseudosFilles())
     await ctx.send(f"✅ {salon.mention}")
@@ -217,19 +214,16 @@ async def setupexplications(ctx):
         embed=None
         if "drive" in name:
             embed=discord.Embed(color=0x9B59B6, title=f"📁 {ch.name.upper()} - Stock Modèle", description=f"**🤖 C'est quoi ce salon?**\nStock vidéos d'**UN SEUL modèle**.\n\n**🎯 Pour créer ton compte :**\n1️⃣ {lien_pseudo} -> **Pseudo + Bio + PDP**\n2️⃣ {lien_pack} -> **8 Reels + Descriptions** de ce modèle\n\n**⚠️ Règle d'or : 1 salon = 1 modèle**")
-            embed.set_footer(text="Ramane | OFM - Lecture Seule - Agence Pro")
         elif "bio" in name: embed=discord.Embed(color=0x3498DB, title="📝 STOCK BIOS", description=f"**🤖 C'est quoi ce salon?**\nStock Bios Instagram.\nEnvoie 1 bio par message.\nUtilisé auto par {lien_pseudo}")
         elif any(x in name for x in ["photo","pdp","profil"]): embed=discord.Embed(color=0xE67E22, title="🖼️ STOCK PHOTOS PROFIL", description=f"**🤖 C'est quoi ce salon?**\nStock PDP.\nEnvoie tes photos ici.\nUtilisé auto par {lien_pseudo}")
         elif "description" in name: embed=discord.Embed(color=0x2ECC71, title="✍️ STOCK DESCRIPTIONS", description=f"**🤖 C'est quoi ce salon?**\nStock Captions Reels.\n1 description par message.\nUtilisé auto par {lien_pack}")
         if embed:
             try: await ch.send(embed=embed)
             except: pass
-    await ctx.send(f"✅ Agence configurée pro. Workflow : {lien_pseudo} -> {lien_pack}")
+    await ctx.send(f"✅ Agence configurée")
 
-# ================== NOUVEAU : SYSTEME VIRAL ILLIMITE + SALON PRIVE PERSO ==================
 DB_FILE = "viral_db.json"
-SEUIL_VIRAL = 50000 # 50k vues = viral (tu peux changer)
-
+SEUIL_VIRAL = 50000
 def load_db():
     try:
         with open(DB_FILE, "r") as f: return json.load(f)
@@ -249,7 +243,7 @@ def get_all_viral_sync(insta_url):
                 posts.append({'url': e.get('url') or f"https://www.instagram.com/reel/{e.get('id')}/", 'views': views, 'desc': (e.get('description') or e.get('title') or "")[:120]})
         posts = sorted(posts, key=lambda x: x['views'], reverse=True)
         viral = [p for p in posts if p['views'] >= SEUIL_VIRAL]
-        if not viral and posts: viral = posts[:max(1, len(posts)//2)] # si petit compte, garde la moitié la plus virale
+        if not viral and posts: viral = posts[:max(1, len(posts)//2)]
         return viral
     except Exception as e:
         print(e); return []
@@ -262,14 +256,12 @@ class ViewMesVideos(discord.ui.View):
         db = load_db()
         mine = db.get(str(interaction.user.id), [])
         if not mine:
-            await interaction.followup.send("❌ Tu n'as encore collé aucun lien viral dans #📥┃comptes-instagram\n\n**🤖 C'est quoi ce bot?**\nCe bot sert à stocker toutes les vidéos qui ont percé. Tu colles un lien Insta qui perce, il garde seulement les vidéos virales (illimité) et te les rend en privé.", ephemeral=True)
-            return
-        embed=discord.Embed(color=0xE1306C, title=f"👤 TES VIDÉOS VIRALES - {len(mine)} stockées (ILLIMITÉ)", description="**🤖 C'est quoi ce bot?**\nCe salon c'est TON fichier privé. Chaque vidéo que TU as collée dans #comptes-instagram est stockée ici. Seul toi vois tes vidéos avec ce bouton.\n\n**Tes liens cliquables :**")
+            await interaction.followup.send("❌ Tu n'as encore collé aucun lien viral dans #📥┃comptes-instagram", ephemeral=True); return
+        embed=discord.Embed(color=0xE1306C, title=f"👤 TES VIDÉOS VIRALES - {len(mine)} stockées")
         txt=""
         for i, p in enumerate(mine[::-1][:20], 1):
             txt+=f"**{i}.** {p['views']} vues - {p['url']}\n"
-        embed.description+=f"\n{txt[:3500]}"
-        embed.set_footer(text="Option 1/2 : Seulement tes vidéos à toi - Illimité")
+        embed.description=txt[:4000]
         await interaction.followup.send(embed=embed, ephemeral=True)
 
     @discord.ui.button(label="🌍 VOIR TOUT LE MONDE", style=discord.ButtonStyle.secondary, custom_id="btn_all_videos_illimite")
@@ -279,14 +271,13 @@ class ViewMesVideos(discord.ui.View):
         total=sum(len(v) for v in db.values())
         if total==0:
             await interaction.followup.send("Aucune vidéo encore.", ephemeral=True); return
-        embed=discord.Embed(color=0x9B59B6, title=f"🌍 STOCK VIRAL GLOBAL - {total} vidéos (ILLIMITÉ)", description="**🤖 C'est quoi ce bot?**\nCe salon sert à voir le stock viral de TOUTE l'agence. Chaque chatter colle des comptes qui percent, et tout est centralisé ici.\n\n**Qui a trouvé quoi :**")
+        embed=discord.Embed(color=0x9B59B6, title=f"🌍 STOCK VIRAL GLOBAL - {total} vidéos")
         txt=""
         for uid, posts in list(db.items())[-15:]:
             try: u=await bot.fetch_user(int(uid)); name=u.name
             except: name=uid[:6]
             txt+=f"**{name}** : {len(posts)} virales - ex: {posts[-1]['url'] if posts else ''}\n"
-        embed.description+=f"\n{txt[:3500]}"
-        embed.set_footer(text="Option 2/2 : Voir tout le monde - Pour piquer les bons comptes")
+        embed.description=txt[:4000]
         await interaction.followup.send(embed=embed, ephemeral=True)
 
 @bot.command()
@@ -294,11 +285,9 @@ async def setupcomptes(ctx):
     if not ctx.author.guild_permissions.administrator: return
     cat=discord.utils.get(ctx.guild.categories, name="🎀 MODELES") or await ctx.guild.create_category("🎀 MODELES")
     salon=discord.utils.get(ctx.guild.text_channels, name="📥┃comptes-instagram") or await ctx.guild.create_text_channel(name="📥┃comptes-instagram", category=cat)
-    embed=discord.Embed(color=0xE1306C, title="📥 Ramane | OFM - Détecteur de Comptes Viraux",
-        description="**🤖 C'est quoi ce bot?**\nCe bot sert à aspirer automatiquement les vidéos qui ont VRAIMENT percé d'un compte Instagram.\n\n**⚙️ Comment ça marche?**\n1️⃣ Tu trouves un compte Insta qui perce\n2️⃣ Tu colles le lien ici (ex: `https://www.instagram.com/username/`)\n3️⃣ Le bot scanne TOUTES ses vidéos et garde **QUE celles qui ont percé** (pas de limite de 8, c'est illimité - si 30 ont percé, il garde 30)\n4️⃣ Il te crée un **fichier privé** = thread privé avec les liens cliquables\n5️⃣ Il stocke aussi dans `📤┃videos-recues`\n\n**📁 Si tu colles 4 liens différents = 4 fichiers privés différents pour toi**\n\n**🔒 Compte public uniquement**\n\n👇 **Colle ton lien ci-dessous**")
-    embed.set_footer(text="Ramane | OFM - Système Viral Illimité")
+    embed=discord.Embed(color=0xE1306C, title="📥 Ramane | OFM - Détecteur de Comptes Viraux", description="**🤖 C'est quoi ce bot?**\nAspirer les vidéos qui ont VRAIMENT percé d'un compte Insta.\n\n**⚙️ Comment ça marche?**\n1️⃣ Tu colles le lien ici\n2️⃣ Bot garde QUE celles qui ont percé (illimité)\n3️⃣ Il te crée un fichier privé avec liens cliquables\n4️⃣ Il stocke aussi dans videos-recues\n\n**📁 4 liens = 4 fichiers privés différents**\n\n**🔒 Compte public uniquement**")
     await salon.send(embed=embed)
-    await ctx.send(f"✅ {salon.mention} reconfiguré avec explication du bot")
+    await ctx.send(f"✅ {salon.mention}")
 
 @bot.command()
 async def setupviral(ctx):
@@ -309,5 +298,37 @@ async def setupviral(ctx):
             try: await ch.delete()
             except: pass
     salon=await ctx.guild.create_text_channel(name="🎬┃mes-videos-virales", category=cat)
-    embed=discord.Embed(color=0xE1306C, title="🎬 Ramane | OFM - Ton Stock Viral Perso (Bot Privé)",
-        description="**🤖 C'est quoi ce bot?**\nCe salon c'est ton **fichier privé viral**. C'est à travers ce bot que chacun va voir ses vidéos stockées.\n\n**⚙️ Comment ça marche?**\nTu colles des liens dans #📥┃comptes-instagram, le bot garde en mémoire TOUT ce que tu as trouvé.\n\n**👇 2 O
+    embed=discord.Embed(color=0xE1306C, title="🎬 Ton Stock Viral Perso (Bot Privé)", description="**🤖 C'est quoi ce bot?**\nCe salon c'est ton fichier privé viral.\n\n**👇 2 OPTIONS :**\n**👤 MES VIDÉOS VIRALES** : seulement tes vidéos à toi\n**🌍 VOIR TOUT LE MONDE** : stock de toute l'agence\n\n👇 Choisis")
+    await salon.send(embed=embed, view=ViewMesVideos())
+    await ctx.send(f"✅ {salon.mention}")
+
+@bot.event
+async def on_ready():
+    print(f"✅ {NOM_AGENCE} EN LIGNE")
+    bot.add_view(ViewPseudosFilles()); bot.add_view(ViewPackReels()); bot.add_view(ViewMesVideos())
+
+@bot.event
+async def on_message(message):
+    if message.author.bot:
+        await bot.process_commands(message); return
+
+    if "comptes-instagram" in message.channel.name.lower() and "instagram.com" in message.content.lower():
+        m=re.search(r'https?://(?:www\.)?instagram\.com/([A-Za-z0-9_.]+)', message.content)
+        if m:
+            username=m.group(1).split('/')[0]
+            clean=f"https://www.instagram.com/{username}/reels/"
+            await message.channel.send(f"⏳ **@{username}** - Scan viral ILLIMITÉ en cours...")
+            viral=await bot.loop.run_in_executor(None, lambda: get_all_viral_sync(clean))
+            if not viral:
+                await message.channel.send(f"❌ @{username} - Aucune virale ou compte privé.")
+            else:
+                db=load_db(); uid=str(message.author.id)
+                if uid not in db: db[uid]=[]
+                exist=set(p['url'] for p in db[uid])
+                new=[p for p in viral if p['url'] not in exist]
+                db[uid].extend(new); save_db(db)
+                try:
+                    thread=await message.channel.create_thread(name=f"viral-{username}-{message.author.name}-{len(viral)}", type=discord.ChannelType.private_thread, auto_archive_duration=1440)
+                    await thread.add_user(message.author)
+                    for mem in message.guild.members:
+                        if any(x in r.name.lower() for r in mem.roles for
