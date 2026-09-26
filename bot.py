@@ -3,6 +3,16 @@ from discord.ext import commands
 import os
 import json
 import random
+from flask import Flask
+import threading
+
+# --- PATCH RENDER ANTI TIMED OUT (8 lignes) ---
+app = Flask(__name__)
+@app.route('/')
+def home(): return "RAMANE BOT ONLINE"
+def run_web(): app.run(host='0.0.0.0', port=10000)
+threading.Thread(target=run_web, daemon=True).start()
+# --- FIN PATCH ---
 
 # --- CONFIG ---
 intents = discord.Intents.default()
