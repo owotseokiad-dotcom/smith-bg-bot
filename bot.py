@@ -134,7 +134,7 @@ class ViewPackReels(discord.ui.View):
         await interaction.followup.send("⏳ Recherche en cours... Je cherche 8 vidéos du MÊME modèle pour toi...", ephemeral=True)
         reels=await get_drive_reels_grouped(interaction.guild); descs=await get_descriptions(interaction.guild)
         if len(reels)<8 or len(descs)<8:
-            await interaction.followup.send(f"❌ Stock insuffisant: {len(reels)}/8 vidéos (dans le salon choisi), {len(descs)}/8 descriptions.", ephemeral=True); return
+            await interaction.followup.send(f"❌ Stock insuffisant: {len(reels)}/8 vidéos, {len(descs)}/8 descriptions.", ephemeral=True); return
         random.shuffle(reels); random.shuffle(descs)
         reels = reels[:8]
         salon_out=discord.utils.get(interaction.guild.text_channels, name="🎯┃packs-reels") or interaction.channel
@@ -330,5 +330,6 @@ async def on_message(message):
                 try:
                     thread=await message.channel.create_thread(name=f"viral-{username}-{message.author.name}-{len(viral)}", type=discord.ChannelType.private_thread, auto_archive_duration=1440)
                     await thread.add_user(message.author)
+                    # FIX ICI - CORRIGE LE SYNTAX ERROR
                     for mem in message.guild.members:
-                        if any(x in r.name.lower() for r in mem.roles for
+                        for r in mem.rol
