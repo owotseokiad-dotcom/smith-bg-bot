@@ -1,5 +1,4 @@
 discord.py
 Flask
-requests
 yt-dlp
-audioop-lts
+PyNaCl
