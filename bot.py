@@ -364,5 +364,3 @@ else:
     except Exception as e:
         print(f"CRASH DISCORD: {e}")
         app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 10000)))
-
-Je peux remettre ça
