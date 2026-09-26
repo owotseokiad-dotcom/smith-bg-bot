@@ -1,14 +1,7 @@
 from flask import Flask
 import threading
-import os
-import discord
+import os, discord, requests, random, re, io, time, yt_dlp
 from discord.ext import commands
-import requests
-import random
-# --- AJOUTS POUR TES 2 SALONS (je touche pas au reste) ---
-import re
-import io
-import yt_dlp
 
 app = Flask(__name__)
 @app.route('/')
@@ -22,237 +15,184 @@ intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 NOM_AGENCE = "Ramane |OFM"
-NOM_CATEGORIE = "📈 CLIENTS"
-NOM_CATEGORIE_CALL = "🔊 CALLS"
-NOM_ROLE_CLIENT = "Client Insta"
-NOM_ROLE_MANAGER = "Manager"
-
 NOMS_FILLES = ["Sophie","Mia","Emma","Lina","Chloe","Luna","Ava","Sofia","Lily","Nina","Eva","Ruby","Bella","Zoe","Maya","Lea","Jade","Mila","Sara","Elisa","Noa","Lola","Ines","Camille","Julie"]
 SUFFIXES = ["rose","dream","love","sweet","babe","doll","angel","honey","bliss","vibe","bloom","glow","petal","charm"]
 
 async def get_bios_from_salon(guild):
-    salon_bio = None
     for ch in guild.text_channels:
         if "bio" in ch.name.lower():
-            salon_bio = ch
-            break
-    if not salon_bio:
-        return ["19 🎀 sweet girl next door | DM me 💌", "20 💋 your fav blonde | let's chat"]
-    bios = []
-    async for msg in salon_bio.history(limit=200):
-        if msg.content and len(msg.content) > 10:
-            if not msg.content.startswith("!") and not msg.content.startswith("?"):
-                bios.append(msg.content)
-    if not bios:
-        bios = ["19 🎀 sweet girl next door | DM me 💌"]
-    return bios
+            bios=[m.content async for m in ch.history(limit=200) if m.content and len(m.content)>10]
+            if bios: return bios
+    return ["19 🎀 sweet girl | DM me"]
 
 async def get_photos_from_salon(guild):
-    salon_photo = None
     for ch in guild.text_channels:
-        name = ch.name.lower()
-        if "photo" in name or "pdp" in name or "pfp" in name or "profil" in name or "avatar" in name:
-            if "pseudo" not in name:
-                salon_photo = ch
-                break
-    if not salon_photo:
-        return []
-    photos = []
-    async for msg in salon_photo.history(limit=200):
-        if msg.attachments:
-            for att in msg.attachments:
-                if att.content_type and "image" in att.content_type:
-                    photos.append(att.url)
-        if msg.content and "http" in msg.content and ("cdn.discord" in msg.content or "tenor" not in msg.content):
-            photos.append(msg.content.split()[0])
-    return photos
+        n=ch.name.lower()
+        if ("photo" in n or "pdp" in n or "profil" in n) and "pseudo" not in n:
+            photos=[]
+            async for m in ch.history(limit=200):
+                for att in m.attachments:
+                    if att.content_type and "image" in att.content_type: photos.append(att.url)
+            if photos: return photos
+    return []
 
 def generer_pseudo_inutilise():
-    prenom = random.choice(NOMS_FILLES).lower()
-    suffix = random.choice(SUFFIXES)
-    lettres = ''.join(random.choices("abcdefghijkmnopqrstuvwxyz", k=2))
-    pseudo_sans_point = f"{prenom}{suffix}{lettres}"
-    pseudo_avec_point = f"{prenom}.{suffix}{lettres}"
-    chiffre = random.randint(10, 99)
-    pseudo_avec_chiffre = f"{prenom}{suffix}{chiffre}{lettres}"
-    return pseudo_sans_point, pseudo_avec_point, pseudo_avec_chiffre
+    p=random.choice(NOMS_FILLES).lower(); s=random.choice(SUFFIXES); l=''.join(random.choices("abcdefghijkmnopqrstuvwxyz", k=2))
+    return f"{p}{s}{l}", f"{p}.{s}{l}", f"{p}{s}{random.randint(10,99)}{l}"
 
-@bot.event
-async def on_ready():
-    print(f"✅ {NOM_AGENCE} EN LIGNE {bot.user}")
-    bot.add_view(ViewPseudosFilles())
-    bot.add_view(ViewChoixPays())
+# === RECUP DRIVE + DESC ===
+async def get_drive_reels(guild, limit=400):
+    reels=[]
+    for ch in guild.text_channels:
+        if "drive" in ch.name.lower():
+            async for m in ch.history(limit=limit):
+                if m.attachments or "drive.google.com" in m.content or "https://" in m.content:
+                    if len(m.content)>5 or m.attachments: reels.append(m)
+    return reels
 
-@bot.event
-async def on_member_join(member):
-    guild = member.guild
-    role = discord.utils.get(guild.roles, name=NOM_ROLE_CLIENT)
-    if not role:
-        role = await guild.create_role(name=NOM_ROLE_CLIENT, colour=discord.Colour.pink())
-    await member.add_roles(role)
-    categorie = discord.utils.get(guild.categories, name=NOM_CATEGORIE)
-    if not categorie:
-        categorie = await guild.create_category(NOM_CATEGORIE)
-    overwrites = {
-        guild.default_role: discord.PermissionOverwrite(read_messages=False),
-        member: discord.PermissionOverwrite(read_messages=True, send_messages=True),
-        guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True)
-    }
-    salon_prive = await guild.create_text_channel(name=f"🔒・{member.name.lower()}", category=categorie, overwrites=overwrites)
-    await salon_prive.send(f"Bienvenue {member.mention} chez {NOM_AGENCE}")
+async def get_descriptions(guild, limit=400):
+    descs=[]
+    for ch in guild.text_channels:
+        if "description" in ch.name.lower():
+            async for m in ch.history(limit=limit):
+                if m.content and len(m.content)>15 and not m.content.startswith("!"): descs.append(m)
+    return descs
 
+# === VIEWS AVEC BOUTONS ===
 class ViewPseudosFilles(discord.ui.View):
-    def __init__(self):
-        super().__init__(timeout=None)
+    def __init__(self): super().__init__(timeout=None)
     @discord.ui.button(label="🎀 Pseudo", style=discord.ButtonStyle.primary, custom_id="btn_pseudo_fille_final")
     async def pseudo_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer(ephemeral=True)
-        pseudo_sans, pseudo_point, pseudo_chiffre = generer_pseudo_inutilise()
-        bios = await get_bios_from_salon(interaction.guild)
-        photos = await get_photos_from_salon(interaction.guild)
-        bio_choisie = random.choice(bios) if bios else "19 🎀 sweet girl | DM me"
-        photo_choisie = random.choice(photos) if photos else None
-        embed = discord.Embed(color=0xFF69B4, title="🎀 Identité générée depuis ton serveur", description="**Seule toi vois ce message** - Données prises dans tes salons")
-        embed.add_field(name="👤 Pseudo SANS chiffre SANS point (RECOMMANDÉ - unique)", value=f"`{pseudo_sans}`", inline=False)
-        embed.add_field(name="👤 Pseudo avec point", value=f"`{pseudo_point}`", inline=False)
-        embed.add_field(name="🔢 Pseudo avec chiffres (si sans chiffre pris)", value=f"`{pseudo_chiffre}`", inline=False)
-        embed.add_field(name="📝 Bio piquée dans #bio", value=f"```{bio_choisie[:1000]}```", inline=False)
-        if photo_choisie:
-            embed.set_image(url=photo_choisie)
-            embed.add_field(name="📸 Photo de profil piquée", value="Photo ci-dessus vient de ton salon photo/pdp", inline=False)
-        else:
-            embed.add_field(name="📸 Photo de profil", value="⚠️ J'ai pas trouvé de salon photo. Mets tes PDP dans un salon qui s'appelle `photos` ou `pdp`", inline=False)
-        embed.set_footer(text=f"{NOM_AGENCE} | Pseudo généré pour être non-utilisé sur Insta")
+        ps1,ps2,ps3=generer_pseudo_inutilise()
+        bios=await get_bios_from_salon(interaction.guild); photos=await get_photos_from_salon(interaction.guild)
+        embed=discord.Embed(color=0xFF69B4, title="🎀 Identité générée")
+        embed.add_field(name="👤 RECOMMANDÉ", value=f"`{ps1}`", inline=False)
+        embed.add_field(name="📝 Bio", value=f"```{random.choice(bios)[:900]}```", inline=False)
+        if photos: embed.set_image(url=random.choice(photos))
         await interaction.followup.send(embed=embed, ephemeral=True)
-        logs = discord.utils.get(interaction.guild.text_channels, name="logs-pseudos")
-        if logs:
-            await logs.send(f"👤 {interaction.user.mention} a généré `{pseudo_sans}` | bio + photo piquées")
 
+class ViewPackReels(discord.ui.View):
+    def __init__(self): super().__init__(timeout=None)
+    @discord.ui.button(label="🎯 Générer 8 Packs", style=discord.ButtonStyle.success, custom_id="btn_pack_reels_final", emoji="🎬")
+    async def pack_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer(ephemeral=True)
+        reels=await get_drive_reels(interaction.guild)
+        descs=await get_descriptions(interaction.guild)
+
+        if len(reels)<8:
+            await interaction.followup.send(f"❌ Il me faut 8 REELS minimum dans tes salons `drive`. J'en ai trouvé {len(reels)}. Ajoute des liens drive.", ephemeral=True)
+            return
+        if len(descs)<8:
+            await interaction.followup.send(f"❌ Il me faut 8 DESCRIPTIONS minimum dans tes salons `description`. J'en ai trouvé {len(descs)}.", ephemeral=True)
+            return
+
+        random.shuffle(reels); random.shuffle(descs)
+        salon_out=discord.utils.get(interaction.guild.text_channels, name="🎯┃packs-reels")
+
+        await interaction.followup.send(f"✅ Je génère 8 packs... Regarde dans {salon_out.mention}", ephemeral=True)
+
+        for i in range(8):
+            r=reels[i]; d=descs[i]
+            reel_txt=r.content
+            if r.attachments: reel_txt = r.attachments[0].url + "\n" + reel_txt
+
+            embed=discord.Embed(color=0x00FF88, title=f"PACK {i+1}/8 - REEL + DESC MATCH", description=f"Pour {interaction.user.mention}")
+            embed.add_field(name="🎬 REEL (pris dans Drive)", value=reel_txt[:1024] or "Lien drive", inline=False)
+            embed.add_field(name="📝 DESCRIPTION QUI VA AVEC", value=d.content[:1024], inline=False)
+            embed.set_footer(text=f"Reel: #{r.channel.name} | Desc: #{d.channel.name} | Cliqué par {interaction.user.name}")
+            await salon_out.send(embed=embed)
+
+@bot.event
+async def on_ready():
+    print(f"✅ {NOM_AGENCE} EN LIGNE")
+    bot.add_view(ViewPseudosFilles())
+    bot.add_view(ViewPackReels())
+
+# === COMMANDES SETUP ===
 @bot.command()
 async def setupfilles(ctx):
     if not ctx.author.guild_permissions.administrator: return
-    cat = discord.utils.get(ctx.guild.categories, name="🎀 MODELES")
-    if not cat:
-        cat = await ctx.guild.create_category("🎀 MODELES")
+    cat=discord.utils.get(ctx.guild.categories, name="🎀 MODELES") or await ctx.guild.create_category("🎀 MODELES")
+    salon=discord.utils.get(ctx.guild.text_channels, name="🎀┃pseudos-filles") or await ctx.guild.create_text_channel(name="🎀┃pseudos-filles", category=cat)
+    embed=discord.Embed(color=0xFF69B4, title="🎀 Générateur d'identités", description="Clique sur 🎀 Pseudo")
+    await salon.send(embed=embed, view=ViewPseudosFilles())
+    await ctx.send(f"✅ {salon.mention}")
+
+@bot.command()
+async def setuppack(ctx):
+    if not ctx.author.guild_permissions.administrator: return
+    cat=discord.utils.get(ctx.guild.categories, name="🎀 MODELES") or await ctx.guild.create_category("🎀 MODELES")
+    # supprime ancien si existe
     for ch in list(ctx.guild.text_channels):
-        if "pseudos-filles" in ch.name.lower():
+        if "packs-reels" in ch.name.lower():
             try: await ch.delete()
             except: pass
-    overwrites = {
-        ctx.guild.default_role: discord.PermissionOverwrite(view_channel=True, read_messages=True, send_messages=False),
-        ctx.guild.me: discord.PermissionOverwrite(view_channel=True, read_messages=True, send_messages=True, manage_messages=True)
-    }
-    salon = await ctx.guild.create_text_channel(name="🎀┃pseudos-filles", category=cat, overwrites=overwrites)
-    logs = discord.utils.get(ctx.guild.text_channels, name="logs-pseudos")
-    if not logs:
-        overwrites_logs = {ctx.guild.default_role: discord.PermissionOverwrite(view_channel=False), ctx.guild.me: discord.PermissionOverwrite(view_channel=True, read_messages=True, send_messages=True)}
-        for r in ctx.guild.roles:
-            if r.permissions.administrator or "Manager" in r.name or "Team Leader" in r.name:
-                overwrites_logs[r] = discord.PermissionOverwrite(view_channel=True, read_messages=True, send_messages=True)
-        logs = await ctx.guild.create_text_channel(name="logs-pseudos", category=cat, overwrites=overwrites_logs)
-    embed_panel = discord.Embed(color=0xFF69B4, title="🎀 Générateur d'identités OFM", description="Le bot va piocher AUTOMATIQUEMENT dans tes salons existants :\n\n📝 **Bios** -> dans le salon qui contient `bio`\n📸 **Photos** -> dans le salon qui contient `photo` / `pdp` / `profil`\n\nClique sur **🎀 Pseudo** en bas et tu reçois :\n✅ Pseudo SANS chiffre SANS point (unique, non utilisé)\n✅ Bio de ton agence\n✅ Photo de profil de ton agence")
-    await salon.send(embed=embed_panel, view=ViewPseudosFilles())
-    await ctx.send(f"✅ Salon créé : {salon.mention} - il va piquer dans tes salons bio + photo existants")
+    overwrites={ctx.guild.default_role: discord.PermissionOverwrite(view_channel=True, read_messages=True, send_messages=False), ctx.guild.me: discord.PermissionOverwrite(view_channel=True, read_messages=True, send_messages=True, manage_messages=True)}
+    salon=await ctx.guild.create_text_channel(name="🎯┃packs-reels", category=cat, overwrites=overwrites)
 
-CLE_5SIM = os.getenv("KEY_5SIM")
-class ViewLireCode(discord.ui.View):
-    def __init__(self, activation_id):
-        super().__init__(timeout=1200)
-        self.activation_id = activation_id
-    @discord.ui.button(label="✉️ Lire le code", style=discord.ButtonStyle.success)
-    async def lire(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.defer(ephemeral=True)
-        try:
-            headers = {"Authorization": f"Bearer {CLE_5SIM}"}
-            r = requests.get(f"https://5sim.net/v1/user/check/{self.activation_id}", headers=headers, timeout=10).json()
-            code = r['sms'][0]['code']
-            await interaction.followup.send(f"✅ CODE : **{code}**", ephemeral=True)
-        except:
-            await interaction.followup.send(f"⏳ Pas encore, reclique 30s", ephemeral=True)
+    embed=discord.Embed(color=0x00FF88, title="🎯 Générateur de PACKS REELS", description="**Le bot va piocher AUTOMATIQUEMENT :**\n\n🎬 **REELS** -> dans tous les salons qui contiennent `drive`\n📝 **DESCRIPTIONS** -> dans tous les salons qui contiennent `description`\n\n**Clique sur le bouton en bas** et tu reçois instantanément :\n✅ 8 REELS + 8 DESCRIPTIONS qui matchent\n✅ Triés aléatoirement pour éviter doublons\n\n*Seul toi vois la confirmation, les packs s'affichent ici.*")
+    embed.set_footer(text=f"{NOM_AGENCE} | Pack Reel System")
+    await salon.send(embed=embed, view=ViewPackReels())
+    await ctx.send(f"✅ Salon configuré: {salon.mention} avec bouton. Clique dessus!")
 
-class SelectPays(discord.ui.Select):
-    def __init__(self):
-        options = [discord.SelectOption(label="USA", value="usa", emoji="🇺🇸"), discord.SelectOption(label="Canada", value="canada", emoji="🇨🇦"), discord.SelectOption(label="Angleterre", value="england", emoji="🇬🇧"), discord.SelectOption(label="Ukraine", value="ukraine", emoji="🇺🇦")]
-        super().__init__(placeholder="🌍 Choisis ton pays...", options=options, custom_id="choix_pays_final")
-    async def callback(self, interaction: discord.Interaction):
-        await interaction.response.defer(ephemeral=True)
-        await interaction.followup.send("Numéro généré (logique 5sim ici)", ephemeral=True)
+# === PACK COMMANDE TEXTE AUSSI ===
+@bot.command()
+async def pack(ctx):
+    # ça appelle la même logique que le bouton
+    reels=await get_drive_reels(ctx.guild); descs=await get_descriptions(ctx.guild)
+    if len(reels)<8 or len(descs)<8:
+        await ctx.send(f"❌ Pas assez de données. Reels: {len(reels)}/8 | Desc: {len(descs)}/8")
+        return
+    random.shuffle(reels); random.shuffle(descs)
+    out=discord.utils.get(ctx.guild.text_channels, name="🎯┃packs-reels")
+    for i in range(8):
+        r=reels[i]; d=descs[i]
+        reel_txt=r.content + (f"\n{r.attachments[0].url}" if r.attachments else "")
+        embed=discord.Embed(color=0x00FF88, title=f"PACK {i+1}/8")
+        embed.add_field(name="🎬 REEL", value=reel_txt[:1000], inline=False)
+        embed.add_field(name="📝 DESCRIPTION", value=d.content[:1000], inline=False)
+        await out.send(embed=embed)
+    await ctx.send(f"✅ 8 packs envoyés dans {out.mention}")
 
-class ViewChoixPays(discord.ui.View):
-    def __init__(self):
-        super().__init__(timeout=None)
-        self.add_item(SelectPays())
-
-# ============================================================
-# ===== CODE AJOUTÉ - 2 SALONS AUTO QUE TU AS DEMANDÉ ========
-# ============================================================
+# === TON SYSTEME INSTA AUTO + ANTI BLOCAGE ===
 def scan_insta_viral(url):
-    ydl_opts = {'quiet': True, 'extract_flat': False, 'skip_download': True, 'no_warnings': True}
-    try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=False)
-            videos = []
-            entries = info.get('entries', [info])
-            for e in entries:
-                if not e: continue
-                views = e.get('view_count', 0) or e.get('like_count', 0) or 0
-                videos.append({
-                    'url': e.get('webpage_url') or url,
-                    'desc': e.get('description','') or e.get('title',''),
-                    'views': views,
-                })
-            videos = sorted(videos, key=lambda x: x['views'], reverse=True)
-            return videos[:8]
-    except Exception as ex:
-        print(ex)
-        return []
+    cookie_file="cookies.txt" if os.path.exists("cookies.txt") else None
+    ydl_opts={'quiet': True, 'skip_download': True, 'cookiefile': cookie_file, 'sleep_interval': 3, 'max_sleep_interval': 8, 'retries': 5}
+    for _ in range(3):
+        try:
+            time.sleep(random.uniform(2,4))
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info=ydl.extract_info(url, download=False)
+                vids=[]
+                for e in info.get('entries',[info]):
+                    if not e: continue
+                    vids.append({'url': e.get('webpage_url') or url, 'views': e.get('view_count',0) or 0})
+                return sorted(vids, key=lambda x:x['views'], reverse=True)[:8]
+        except: time.sleep(5)
+    return []
 
 @bot.command()
 async def setupauto(ctx):
-    if not ctx.author.guild_permissions.administrator: return
-    cat = discord.utils.get(ctx.guild.categories, name="🎀 MODELES") or await ctx.guild.create_category("🎀 MODELES")
-    for ch in list(ctx.guild.text_channels):
-        if "comptes-instagram" in ch.name.lower() or "videos-recues" in ch.name.lower():
-            try: await ch.delete()
-            except: pass
-    overwrites = {ctx.guild.default_role: discord.PermissionOverwrite(view_channel=True, read_messages=True, send_messages=True), ctx.guild.me: discord.PermissionOverwrite(view_channel=True, read_messages=True, send_messages=True, manage_messages=True)}
-    salon1 = await ctx.guild.create_text_channel(name="📥┃comptes-instagram", category=cat, overwrites=overwrites)
-    salon2 = await ctx.guild.create_text_channel(name="📤┃videos-recues", category=cat, overwrites=overwrites)
-    await salon1.send("📥 **COLLE ICI LES LIENS INSTA QUI ONT PERCÉ**\nExemple: `https://www.instagram.com/nom_du_compte/`\nLe bot va auto envoyer les 8 vidéos virales dans 📤┃videos-recues")
-    await salon2.send("📤 **ICI TU REÇOIS LES VIDÉOS**\nCe salon reçoit auto les 8 vidéos (même fille, triées par vues)")
-    await ctx.send(f"✅ C'est fait: {salon1.mention} -> {salon2.mention}")
+    cat=discord.utils.get(ctx.guild.categories, name="🎀 MODELES") or await ctx.guild.create_category("🎀 MODELES")
+    s1=discord.utils.get(ctx.guild.text_channels, name="📥┃comptes-instagram") or await ctx.guild.create_text_channel(name="📥┃comptes-instagram", category=cat)
+    s2=discord.utils.get(ctx.guild.text_channels, name="📤┃videos-recues") or await ctx.guild.create_text_channel(name="📤┃videos-recues", category=cat)
+    await ctx.send(f"✅ {s1.mention} -> {s2.mention}")
 
 @bot.event
 async def on_message(message):
-    if message.author.bot:
-        await bot.process_commands(message)
-        return
-    if "instagram.com" in message.content and ("comptes" in message.channel.name.lower() or "insta" in message.channel.name.lower()):
-        if "videos-recues" in message.channel.name.lower() or "banque" in message.channel.name.lower():
-            await bot.process_commands(message)
-            return
-        urls = re.findall(r'https?://(?:www\.)?instagram\.com/\S+', message.content)
+    if message.author.bot: await bot.process_commands(message); return
+    if "instagram.com" in message.content and "comptes" in message.channel.name.lower():
+        import re
+        urls=re.findall(r'https?://(?:www\.)?instagram\.com/\S+', message.content)
         if urls:
-            url = urls[0]
-            await message.channel.send(f"⏳ Je scanne `{url}`... J'envoie les 8 vidéos dans 📤┃videos-recues")
-            videos = scan_insta_viral(url)
-            salon_recoit = discord.utils.get(message.guild.text_channels, name="📤┃videos-recues")
-            if not salon_recoit:
-                cat = discord.utils.get(message.guild.categories, name="🎀 MODELES")
-                salon_recoit = await message.guild.create_text_channel(name="📤┃videos-recues", category=cat)
-            if not videos:
-                await salon_recoit.send(f"❌ Impossible de scanner {url} - compte privé ou Insta bloque.")
-                await bot.process_commands(message)
-                return
-            file_content = f"PACK VIRAL DE {url}\n"
-            for i, v in enumerate(videos, 1):
-                file_content += f"{i}. {v['url']} - {v['views']} vues\n"
-            file_bytes = io.BytesIO(file_content.encode('utf-8'))
-            discord_file = discord.File(file_bytes, filename=f"PACK_{random.randint(100,999)}.txt")
-            embed = discord.Embed(color=0x00FF88, title=f"📤 Pack reçu depuis {message.channel.name}", description=f"Source : {url}\nPar {message.author.mention}\n**8 vidéos même fille, triées par viralité**")
-            for i, v in enumerate(videos, 1):
-                embed.add_field(name=f"{i}. {v['views']} vues", value=f"{v['url']}", inline=False)
-            await salon_recoit.send(embed=embed, file=discord_file)
+            await message.channel.send(f"⏳ Scan {urls[0]}...")
+            vids=scan_insta_viral(urls[0])
+            rec=discord.utils.get(message.guild.text_channels, name="📤┃videos-recues")
+            if vids:
+                emb=discord.Embed(color=0x00FF88, title="📤 Pack viral")
+                for i,v in enumerate(vids,1): emb.add_field(name=f"{i}. {v['views']} vues", value=v['url'], inline=False)
+                await rec.send(embed=emb)
     await bot.process_commands(message)
 
 bot.run(os.getenv("DISCORD_TOKEN"))
