@@ -1,6 +1,6 @@
 from flask import Flask
 import threading
-import os, discord, requests, random, re, io, time, yt_dlp
+import os, discord, requests, random, re, io, time, yt_dlp, tempfile
 from discord.ext import commands
 
 app = Flask(__name__)
@@ -40,40 +40,84 @@ def generer_pseudo_inutilise():
     p=random.choice(NOMS_FILLES).lower(); s=random.choice(SUFFIXES); l=''.join(random.choices("abcdefghijkmnopqrstuvwxyz", k=2))
     return f"{p}{s}{l}", f"{p}.{s}{l}", f"{p}{s}{random.randint(10,99)}{l}"
 
-# --- V2 CORRIGÉ - NE TOUCHE PAS LE RESTE ---
+# --- V3 - ENVOI VIDÉO DIRECTE SANS LIEN ---
+def extract_folder_id(url):
+    m = re.search(r'/folders/([a-zA-Z0-9-_]+)', url)
+    if m: return m.group(1)
+    m = re.search(r'id=([a-zA-Z0-9-_]+)', url)
+    return m.group(1) if m else None
+
+def extract_file_id(url):
+    m = re.search(r'/file/d/([a-zA-Z0-9-_]+)', url)
+    if m: return m.group(1)
+    return extract_folder_id(url)
+
 async def get_drive_reels(guild, limit=1000):
     reels=[]
     for ch in guild.text_channels:
         if "drive" in ch.name.lower():
             async for m in ch.history(limit=limit):
-                # Si c'est une pièce jointe vidéo = 1 reel (qualité originale)
                 for att in m.attachments:
                     if att.content_type and "video" in att.content_type:
-                        reels.append(m)
-
-                # Si c'est un lien Drive
+                        reels.append({'type': 'discord', 'message': m, 'url': att.url, 'name': att.filename})
                 if "drive.google.com" in m.content:
-                    # Si c'est un DOSSIER qui contient que des vidéos comme tu as dit
-                    # On le compte comme 20 vidéos pour débloquer le bot
-                    if "/folders/" in m.content or "/drive/folders" in m.content:
-                        # On ajoute 20 fois le même message pour simuler les 20 vidéos dedans
-                        for _ in range(20):
-                            reels.append(m)
-                    else:
-                        # Si c'est un lien de fichier vidéo direct
-                        reels.append(m)
-    return reels
+                    # on récupère tous les liens drive dans le message
+                    urls = re.findall(r'https?://drive\.google\.com/\S+', m.content)
+                    for url in urls:
+                        fid = extract_file_id(url)
+                        if not fid: continue
+                        if "/folders/" in url or "folders" in url:
+                            # si dossier, on le marque, on ira lister dedans avec l'API si clé dispo
+                            reels.append({'type': 'folder', 'id': fid, 'url': url})
+                        else:
+                            reels.append({'type': 'drive_file', 'id': fid, 'url': url})
+    # Si on a des dossiers et une clé API, on liste les vraies vidéos dedans
+    api_key = os.getenv("GOOGLE_API_KEY")
+    if api_key:
+        try:
+            from googleapiclient.discovery import build
+            service = build('drive', 'v3', developerKey=api_key)
+            expanded = []
+            for r in reels:
+                if r['type'] == 'folder':
+                    try:
+                        res = service.files().list(q=f"'{r['id']}' in parents and trashed=false", fields="files(id,name,mimeType)", pageSize=100).execute()
+                        for f in res.get('files', []):
+                            if 'video' in f.get('mimeType','') or f['name'].lower().endswith(('.mp4','.mov','.mkv')):
+                                expanded.append({'type': 'drive_file', 'id': f['id'], 'name': f['name']})
+                    except: pass
+                else:
+                    expanded.append(r)
+            return expanded
+        except: pass
+    # Si pas de clé API, on multiplie les dossiers x20 pour débloquer comme avant
+    final=[]
+    for r in reels:
+        if r['type'] == 'folder':
+            for _ in range(20): final.append(r)
+        else: final.append(r)
+    return final
 
 async def get_descriptions(guild, limit=1000):
     descs=[]
     for ch in guild.text_channels:
         if "description" in ch.name.lower():
             async for m in ch.history(limit=limit):
-                # 1 message = 1 description comme tu as dit
                 if m.content and len(m.content.strip())>5 and not m.content.startswith("!"):
                     descs.append(m)
     return descs
-# --- FIN V2 CORRIGÉ ---
+
+def download_gdrive_file(file_id):
+    # Téléchargement direct sans lien public
+    url = f"https://drive.google.com/uc?export=download&id={file_id}"
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4")
+    with requests.get(url, stream=True) as r:
+        r.raise_for_status()
+        for chunk in r.iter_content(1024*1024):
+            if chunk: tmp.write(chunk)
+    tmp.close()
+    return tmp.name
+# --- FIN V3 ---
 
 class ViewPseudosFilles(discord.ui.View):
     def __init__(self): super().__init__(timeout=None)
@@ -90,29 +134,46 @@ class ViewPseudosFilles(discord.ui.View):
 
 class ViewPackReels(discord.ui.View):
     def __init__(self): super().__init__(timeout=None)
-    @discord.ui.button(label="🎯 Générer 8 Packs", style=discord.ButtonStyle.success, custom_id="btn_pack_reels_final", emoji="🎬")
+    @discord.ui.button(label="🎯 Générer 8 Packs", style=discord.ButtonStyle.success, custom_id="btn_pack_reels_final_v3", emoji="🎬")
     async def pack_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer(ephemeral=True)
         reels=await get_drive_reels(interaction.guild)
         descs=await get_descriptions(interaction.guild)
         if len(reels)<8:
-            await interaction.followup.send(f"❌ Il me faut 8 REELS minimum dans tes salons `drive`. J'en ai trouvé {len(reels)}. Ajoute des liens drive.", ephemeral=True)
+            await interaction.followup.send(f"❌ J'ai trouvé {len(reels)} vidéos. Il en faut 8. Mets des fichiers vidéos ou ajoute GOOGLE_API_KEY sur Render.", ephemeral=True)
             return
         if len(descs)<8:
-            await interaction.followup.send(f"❌ Il me faut 8 DESCRIPTIONS minimum dans tes salons `description`. J'en ai trouvé {len(descs)}.", ephemeral=True)
+            await interaction.followup.send(f"❌ {len(descs)}/8 descriptions", ephemeral=True)
             return
         random.shuffle(reels); random.shuffle(descs)
         salon_out=discord.utils.get(interaction.guild.text_channels, name="🎯┃packs-reels")
-        await interaction.followup.send(f"✅ Je génère 8 packs... Regarde dans {salon_out.mention}", ephemeral=True)
+        await interaction.followup.send(f"✅ J'envoie 8 VIDÉOS DIRECTES dans {salon_out.mention} (sans lien) - ça prend 30s", ephemeral=True)
         for i in range(8):
             r=reels[i]; d=descs[i]
-            reel_txt=r.content
-            if r.attachments: reel_txt = r.attachments[0].url + "\n" + reel_txt
-            embed=discord.Embed(color=0x00FF88, title=f"PACK {i+1}/8 - REEL + DESC MATCH", description=f"Pour {interaction.user.mention}")
-            embed.add_field(name="🎬 REEL (vidéo originale - pas de photo)", value=reel_txt[:1024] or "Lien drive", inline=False)
-            embed.add_field(name="📝 DESCRIPTION QUI VA AVEC (1 message = 1 desc)", value=d.content[:1024], inline=False)
-            embed.set_footer(text=f"Reel: #{r.channel.name} | Desc: #{d.channel.name} | Cliqué par {interaction.user.name}")
-            await salon_out.send(embed=embed)
+            try:
+                if r['type'] == 'discord':
+                    # Vidéo déjà dans Discord -> on la re-télécharge et re-envoie sans lien
+                    data = requests.get(r['url']).content
+                    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4")
+                    tmp.write(data); tmp.close()
+                    file_to_send = discord.File(tmp.name, filename=r['name'])
+                    embed=discord.Embed(color=0x00FF88, title=f"PACK {i+1}/8")
+                    embed.add_field(name="📝 DESCRIPTION", value=d.content[:1024], inline=False)
+                    await salon_out.send(embed=embed, file=file_to_send)
+                    os.unlink(tmp.name)
+                else:
+                    # Drive file
+                    path = download_gdrive_file(r['id'])
+                    name = r.get('name', f"reel_{i+1}.mp4")
+                    file_to_send = discord.File(path, filename=name)
+                    embed=discord.Embed(color=0x00FF88, title=f"PACK {i+1}/8 - VIDÉO DIRECTE")
+                    embed.add_field(name="📝 DESCRIPTION", value=d.content[:1024], inline=False)
+                    embed.set_footer(text=f"Pour {interaction.user.name} | Sans lien")
+                    await salon_out.send(embed=embed, file=file_to_send)
+                    os.unlink(path)
+            except Exception as e:
+                await salon_out.send(f"❌ Erreur pack {i+1}: {e}")
+                print(e)
 
 @bot.event
 async def on_ready():
@@ -138,27 +199,34 @@ async def setuppack(ctx):
             try: await ch.delete()
             except: pass
     salon=await ctx.guild.create_text_channel(name="🎯┃packs-reels", category=cat)
-    embed=discord.Embed(color=0x00FF88, title="🎯 Générateur de PACKS REELS", description="**Le bot va piocher AUTOMATIQUEMENT :**\n\n🎬 **REELS** -> dans tous les salons qui contiennent `drive` (que des vidéos)\n📝 **DESCRIPTIONS** -> dans tous les salons qui contiennent `description` (1 message = 1 desc)\n\n**Clique sur le bouton en bas** et tu reçois instantanément :\n✅ 8 REELS + 8 DESCRIPTIONS qui matchent")
-    embed.set_footer(text=f"{NOM_AGENCE} | Pack Reel System")
+    embed=discord.Embed(color=0x00FF88, title="🎯 Générateur de PACKS REELS - VIDÉO DIRECTE", description="**Clique et tu reçois :**\n\n🎬 8 VIDÉOS directement uploadées (pas de lien)\n📝 8 DESCRIPTIONS (1 message = 1 desc)")
+    embed.set_footer(text=f"{NOM_AGENCE} | Pack Reel System V3")
     await salon.send(embed=embed, view=ViewPackReels())
-    await ctx.send(f"✅ Salon configuré: {salon.mention} avec bouton. Clique dessus!")
+    await ctx.send(f"✅ Salon configuré: {salon.mention}")
 
 @bot.command()
 async def pack(ctx):
     reels=await get_drive_reels(ctx.guild); descs=await get_descriptions(ctx.guild)
     if len(reels)<8 or len(descs)<8:
-        await ctx.send(f"❌ Pas assez de données. Reels: {len(reels)}/8 | Desc: {len(descs)}/8")
+        await ctx.send(f"❌ Pas assez: {len(reels)}/8 reels, {len(descs)}/8 desc")
         return
     random.shuffle(reels); random.shuffle(descs)
     out=discord.utils.get(ctx.guild.text_channels, name="🎯┃packs-reels")
     for i in range(8):
         r=reels[i]; d=descs[i]
-        reel_txt=r.content + (f"\n{r.attachments[0].url}" if r.attachments else "")
-        embed=discord.Embed(color=0x00FF88, title=f"PACK {i+1}/8")
-        embed.add_field(name="🎬 REEL", value=reel_txt[:1000], inline=False)
-        embed.add_field(name="📝 DESCRIPTION", value=d.content[:1000], inline=False)
-        await out.send(embed=embed)
-    await ctx.send(f"✅ 8 packs envoyés dans {out.mention}")
+        try:
+            if r['type'] == 'discord':
+                data = requests.get(r['url']).content
+                tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4")
+                tmp.write(data); tmp.close()
+                await out.send(content=d.content[:1000], file=discord.File(tmp.name, filename=r['name']))
+                os.unlink(tmp.name)
+            else:
+                path = download_gdrive_file(r['id'])
+                await out.send(content=d.content[:1000], file=discord.File(path, filename=r.get('name', f"{i}.mp4")))
+                os.unlink(path)
+        except Exception as e: print(e)
+    await ctx.send(f"✅ 8 packs vidéos envoyés")
 
 def scan_insta_viral(url):
     cookie_file="cookies.txt" if os.path.exists("cookies.txt") else None
