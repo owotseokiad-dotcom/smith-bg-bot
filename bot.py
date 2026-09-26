@@ -40,7 +40,6 @@ def generer_pseudo_inutilise():
     p=random.choice(NOMS_FILLES).lower(); s=random.choice(SUFFIXES); l=''.join(random.choices("abcdefghijkmnopqrstuvwxyz", k=2))
     return f"{p}{s}{l}", f"{p}.{s}{l}", f"{p}{s}{random.randint(10,99)}{l}"
 
-# === RECUP DRIVE + DESC ===
 async def get_drive_reels(guild, limit=400):
     reels=[]
     for ch in guild.text_channels:
@@ -58,7 +57,6 @@ async def get_descriptions(guild, limit=400):
                 if m.content and len(m.content)>15 and not m.content.startswith("!"): descs.append(m)
     return descs
 
-# === VIEWS AVEC BOUTONS ===
 class ViewPseudosFilles(discord.ui.View):
     def __init__(self): super().__init__(timeout=None)
     @discord.ui.button(label="🎀 Pseudo", style=discord.ButtonStyle.primary, custom_id="btn_pseudo_fille_final")
@@ -79,24 +77,19 @@ class ViewPackReels(discord.ui.View):
         await interaction.response.defer(ephemeral=True)
         reels=await get_drive_reels(interaction.guild)
         descs=await get_descriptions(interaction.guild)
-
         if len(reels)<8:
             await interaction.followup.send(f"❌ Il me faut 8 REELS minimum dans tes salons `drive`. J'en ai trouvé {len(reels)}. Ajoute des liens drive.", ephemeral=True)
             return
         if len(descs)<8:
             await interaction.followup.send(f"❌ Il me faut 8 DESCRIPTIONS minimum dans tes salons `description`. J'en ai trouvé {len(descs)}.", ephemeral=True)
             return
-
         random.shuffle(reels); random.shuffle(descs)
         salon_out=discord.utils.get(interaction.guild.text_channels, name="🎯┃packs-reels")
-
         await interaction.followup.send(f"✅ Je génère 8 packs... Regarde dans {salon_out.mention}", ephemeral=True)
-
         for i in range(8):
             r=reels[i]; d=descs[i]
             reel_txt=r.content
             if r.attachments: reel_txt = r.attachments[0].url + "\n" + reel_txt
-
             embed=discord.Embed(color=0x00FF88, title=f"PACK {i+1}/8 - REEL + DESC MATCH", description=f"Pour {interaction.user.mention}")
             embed.add_field(name="🎬 REEL (pris dans Drive)", value=reel_txt[:1024] or "Lien drive", inline=False)
             embed.add_field(name="📝 DESCRIPTION QUI VA AVEC", value=d.content[:1024], inline=False)
@@ -109,7 +102,6 @@ async def on_ready():
     bot.add_view(ViewPseudosFilles())
     bot.add_view(ViewPackReels())
 
-# === COMMANDES SETUP ===
 @bot.command()
 async def setupfilles(ctx):
     if not ctx.author.guild_permissions.administrator: return
@@ -123,23 +115,18 @@ async def setupfilles(ctx):
 async def setuppack(ctx):
     if not ctx.author.guild_permissions.administrator: return
     cat=discord.utils.get(ctx.guild.categories, name="🎀 MODELES") or await ctx.guild.create_category("🎀 MODELES")
-    # supprime ancien si existe
     for ch in list(ctx.guild.text_channels):
         if "packs-reels" in ch.name.lower():
             try: await ch.delete()
             except: pass
-    overwrites={ctx.guild.default_role: discord.PermissionOverwrite(view_channel=True, read_messages=True, send_messages=False), ctx.guild.me: discord.PermissionOverwrite(view_channel=True, read_messages=True, send_messages=True, manage_messages=True)}
-    salon=await ctx.guild.create_text_channel(name="🎯┃packs-reels", category=cat, overwrites=overwrites)
-
-    embed=discord.Embed(color=0x00FF88, title="🎯 Générateur de PACKS REELS", description="**Le bot va piocher AUTOMATIQUEMENT :**\n\n🎬 **REELS** -> dans tous les salons qui contiennent `drive`\n📝 **DESCRIPTIONS** -> dans tous les salons qui contiennent `description`\n\n**Clique sur le bouton en bas** et tu reçois instantanément :\n✅ 8 REELS + 8 DESCRIPTIONS qui matchent\n✅ Triés aléatoirement pour éviter doublons\n\n*Seul toi vois la confirmation, les packs s'affichent ici.*")
+    salon=await ctx.guild.create_text_channel(name="🎯┃packs-reels", category=cat)
+    embed=discord.Embed(color=0x00FF88, title="🎯 Générateur de PACKS REELS", description="**Le bot va piocher AUTOMATIQUEMENT :**\n\n🎬 **REELS** -> dans tous les salons qui contiennent `drive`\n📝 **DESCRIPTIONS** -> dans tous les salons qui contiennent `description`\n\n**Clique sur le bouton en bas** et tu reçois instantanément :\n✅ 8 REELS + 8 DESCRIPTIONS qui matchent")
     embed.set_footer(text=f"{NOM_AGENCE} | Pack Reel System")
     await salon.send(embed=embed, view=ViewPackReels())
     await ctx.send(f"✅ Salon configuré: {salon.mention} avec bouton. Clique dessus!")
 
-# === PACK COMMANDE TEXTE AUSSI ===
 @bot.command()
 async def pack(ctx):
-    # ça appelle la même logique que le bouton
     reels=await get_drive_reels(ctx.guild); descs=await get_descriptions(ctx.guild)
     if len(reels)<8 or len(descs)<8:
         await ctx.send(f"❌ Pas assez de données. Reels: {len(reels)}/8 | Desc: {len(descs)}/8")
@@ -155,7 +142,6 @@ async def pack(ctx):
         await out.send(embed=embed)
     await ctx.send(f"✅ 8 packs envoyés dans {out.mention}")
 
-# === TON SYSTEME INSTA AUTO + ANTI BLOCAGE ===
 def scan_insta_viral(url):
     cookie_file="cookies.txt" if os.path.exists("cookies.txt") else None
     ydl_opts={'quiet': True, 'skip_download': True, 'cookiefile': cookie_file, 'sleep_interval': 3, 'max_sleep_interval': 8, 'retries': 5}
@@ -183,7 +169,6 @@ async def setupauto(ctx):
 async def on_message(message):
     if message.author.bot: await bot.process_commands(message); return
     if "instagram.com" in message.content and "comptes" in message.channel.name.lower():
-        import re
         urls=re.findall(r'https?://(?:www\.)?instagram\.com/\S+', message.content)
         if urls:
             await message.channel.send(f"⏳ Scan {urls[0]}...")
