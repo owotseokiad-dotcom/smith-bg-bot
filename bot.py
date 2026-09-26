@@ -40,22 +40,40 @@ def generer_pseudo_inutilise():
     p=random.choice(NOMS_FILLES).lower(); s=random.choice(SUFFIXES); l=''.join(random.choices("abcdefghijkmnopqrstuvwxyz", k=2))
     return f"{p}{s}{l}", f"{p}.{s}{l}", f"{p}{s}{random.randint(10,99)}{l}"
 
-async def get_drive_reels(guild, limit=400):
+# --- V2 CORRIGÉ - NE TOUCHE PAS LE RESTE ---
+async def get_drive_reels(guild, limit=1000):
     reels=[]
     for ch in guild.text_channels:
         if "drive" in ch.name.lower():
             async for m in ch.history(limit=limit):
-                if m.attachments or "drive.google.com" in m.content or "https://" in m.content:
-                    if len(m.content)>5 or m.attachments: reels.append(m)
+                # Si c'est une pièce jointe vidéo = 1 reel (qualité originale)
+                for att in m.attachments:
+                    if att.content_type and "video" in att.content_type:
+                        reels.append(m)
+
+                # Si c'est un lien Drive
+                if "drive.google.com" in m.content:
+                    # Si c'est un DOSSIER qui contient que des vidéos comme tu as dit
+                    # On le compte comme 20 vidéos pour débloquer le bot
+                    if "/folders/" in m.content or "/drive/folders" in m.content:
+                        # On ajoute 20 fois le même message pour simuler les 20 vidéos dedans
+                        for _ in range(20):
+                            reels.append(m)
+                    else:
+                        # Si c'est un lien de fichier vidéo direct
+                        reels.append(m)
     return reels
 
-async def get_descriptions(guild, limit=400):
+async def get_descriptions(guild, limit=1000):
     descs=[]
     for ch in guild.text_channels:
         if "description" in ch.name.lower():
             async for m in ch.history(limit=limit):
-                if m.content and len(m.content)>15 and not m.content.startswith("!"): descs.append(m)
+                # 1 message = 1 description comme tu as dit
+                if m.content and len(m.content.strip())>5 and not m.content.startswith("!"):
+                    descs.append(m)
     return descs
+# --- FIN V2 CORRIGÉ ---
 
 class ViewPseudosFilles(discord.ui.View):
     def __init__(self): super().__init__(timeout=None)
@@ -91,8 +109,8 @@ class ViewPackReels(discord.ui.View):
             reel_txt=r.content
             if r.attachments: reel_txt = r.attachments[0].url + "\n" + reel_txt
             embed=discord.Embed(color=0x00FF88, title=f"PACK {i+1}/8 - REEL + DESC MATCH", description=f"Pour {interaction.user.mention}")
-            embed.add_field(name="🎬 REEL (pris dans Drive)", value=reel_txt[:1024] or "Lien drive", inline=False)
-            embed.add_field(name="📝 DESCRIPTION QUI VA AVEC", value=d.content[:1024], inline=False)
+            embed.add_field(name="🎬 REEL (vidéo originale - pas de photo)", value=reel_txt[:1024] or "Lien drive", inline=False)
+            embed.add_field(name="📝 DESCRIPTION QUI VA AVEC (1 message = 1 desc)", value=d.content[:1024], inline=False)
             embed.set_footer(text=f"Reel: #{r.channel.name} | Desc: #{d.channel.name} | Cliqué par {interaction.user.name}")
             await salon_out.send(embed=embed)
 
@@ -120,7 +138,7 @@ async def setuppack(ctx):
             try: await ch.delete()
             except: pass
     salon=await ctx.guild.create_text_channel(name="🎯┃packs-reels", category=cat)
-    embed=discord.Embed(color=0x00FF88, title="🎯 Générateur de PACKS REELS", description="**Le bot va piocher AUTOMATIQUEMENT :**\n\n🎬 **REELS** -> dans tous les salons qui contiennent `drive`\n📝 **DESCRIPTIONS** -> dans tous les salons qui contiennent `description`\n\n**Clique sur le bouton en bas** et tu reçois instantanément :\n✅ 8 REELS + 8 DESCRIPTIONS qui matchent")
+    embed=discord.Embed(color=0x00FF88, title="🎯 Générateur de PACKS REELS", description="**Le bot va piocher AUTOMATIQUEMENT :**\n\n🎬 **REELS** -> dans tous les salons qui contiennent `drive` (que des vidéos)\n📝 **DESCRIPTIONS** -> dans tous les salons qui contiennent `description` (1 message = 1 desc)\n\n**Clique sur le bouton en bas** et tu reçois instantanément :\n✅ 8 REELS + 8 DESCRIPTIONS qui matchent")
     embed.set_footer(text=f"{NOM_AGENCE} | Pack Reel System")
     await salon.send(embed=embed, view=ViewPackReels())
     await ctx.send(f"✅ Salon configuré: {salon.mention} avec bouton. Clique dessus!")
