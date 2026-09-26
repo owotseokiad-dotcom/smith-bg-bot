@@ -36,7 +36,7 @@ def check_compte_us_non_certifie(username):
         ydl_opts = {'quiet': True, 'skip_download': True, 'no_warnings': True}
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(f"https://www.instagram.com/{username}/", download=False)
-            if info.get('is_verified') == True: return False, "❌ Certifié"
+            if info.get('is_verified') == True: return False, "Certifie"
             return True, "OK"
     except: return True, "OK"
 
@@ -63,10 +63,7 @@ def get_all_viral_sync(insta_url):
                     posts.append({'url': url, 'views': views, 'desc': desc[:1000], 'id': e.get('id')})
         return sorted(posts, key=lambda x: x['views'], reverse=True)
     except Exception as e:
-        if "429" in str(e):
-            print("⚠️ 429 INSTA - Rate limit, on pause 60s")
-            time.sleep(10)
-        print(f"ERREUR VIRAL NON FATALE {e}")
+        print(f"ERREUR VIRAL {e}")
         return []
 
 def download_insta_reel_sync(insta_url):
@@ -91,7 +88,6 @@ async def get_drive_reels_grouped(guild):
     reels = []
     for ch in guild.text_channels:
         if "drive" in ch.name.lower():
-            print(f"SCAN DRIVE {ch.name}")
             async for m in ch.history(limit=500):
                 for att in m.attachments:
                     if att.content_type and "video" in att.content_type:
@@ -101,7 +97,6 @@ async def get_drive_reels_grouped(guild):
                     for url in urls:
                         fid = extract_file_id(url)
                         if fid: reels.append({'type': 'drive_file', 'id': fid, 'name': f"{fid}.mp4"})
-    print(f"TOTAL DRIVE TROUVE: {len(reels)}")
     return reels
 
 async def get_descriptions(guild):
@@ -139,8 +134,6 @@ def get_cat_modeles(guild):
         if "modele" in cat.name.lower() or "modèle" in cat.name.lower(): return cat
     return guild.categories[0] if guild.categories else None
 
-# ================= VIEWS =================
-
 class ModalScanInsta(discord.ui.Modal, title="Scanner un compte Insta"):
     lien = discord.ui.TextInput(label="Colle le lien Instagram ici", placeholder="https://www.instagram.com/username/", style=discord.TextStyle.short)
     async def on_submit(self, interaction: discord.Interaction):
@@ -148,16 +141,16 @@ class ModalScanInsta(discord.ui.Modal, title="Scanner un compte Insta"):
         try:
             m=re.search(r'https?://(?:www\.)?instagram\.com/([A-Za-z0-9_.]+)', self.lien.value)
             if not m:
-                await interaction.followup.send("❌ Lien invalide", ephemeral=True); return
+                await interaction.followup.send("Lien invalide", ephemeral=True); return
             username=m.group(1).split('/')[0]
             clean=f"https://www.instagram.com/{username}/reels/"
             is_ok, msg = await bot.loop.run_in_executor(None, lambda: check_compte_us_non_certifie(username))
             if not is_ok:
-                await interaction.followup.send(f"{msg} @{username} ignoré", ephemeral=True); return
-            await interaction.followup.send(f"🔍 Scan @{username} validé...", ephemeral=True)
+                await interaction.followup.send(f"{msg} @{username} ignore", ephemeral=True); return
+            await interaction.followup.send(f"Scan @{username} valide...", ephemeral=True)
             viral=await bot.loop.run_in_executor(None, lambda: get_all_viral_sync(clean))
             if not viral:
-                await interaction.followup.send(f"❌ Rien trouvé pour @{username} - compte privé ou Insta bloque 429", ephemeral=True); return
+                await interaction.followup.send(f"Rien trouve pour @{username}", ephemeral=True); return
             db=load_db(); uid=str(interaction.user.id)
             if uid not in db: db[uid]=[]
             db[uid].extend(viral)
@@ -168,31 +161,31 @@ class ModalScanInsta(discord.ui.Modal, title="Scanner un compte Insta"):
             thread=await interaction.channel.create_thread(name=f"viral-{username}-{len(viral)}", auto_archive_duration=60)
             try: await thread.add_user(interaction.user)
             except: pass
-            embed=discord.Embed(color=0xE1306C, title=f"{len(viral)} VIDEOS - @{username} STOCKÉES")
+            embed=discord.Embed(color=0xE1306C, title=f"{len(viral)} VIDEOS - @{username} STOCKEES")
             txt="";
-            for i,p in enumerate(viral[:20],1): txt+=f"**{i}. {p['views']} vues** - {p['url']}\n"
+            for i,p in enumerate(viral[:20],1): txt+=f"{i}. {p['views']} vues - {p['url']}\n"
             embed.description=txt[:4000]
             await thread.send(f"{interaction.user.mention}", embed=embed)
-            await interaction.followup.send(f"✅ @{username} -> {len(viral)} stockées -> {thread.mention}", ephemeral=True)
+            await interaction.followup.send(f"@{username} -> {len(viral)} stockees -> {thread.mention}", ephemeral=True)
         except Exception as e:
-            await interaction.followup.send(f"❌ Erreur: {e}", ephemeral=True)
+            await interaction.followup.send(f"Erreur: {e}", ephemeral=True)
 
 class ViewScanCompte(discord.ui.View):
     def __init__(self): super().__init__(timeout=None)
-    @discord.ui.button(label="🔍 SCANNER UN COMPTE", style=discord.ButtonStyle.danger, custom_id="ramane_scan_v4_fix")
+    @discord.ui.button(label="SCANNER UN COMPTE", style=discord.ButtonStyle.danger, custom_id="ramane_scan_v4_fix")
     async def scan(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_modal(ModalScanInsta())
 
 class ViewMesVideos(discord.ui.View):
     def __init__(self): super().__init__(timeout=None)
-    @discord.ui.button(label="📂 VOIR MON STOCK VIRAL", style=discord.ButtonStyle.primary, custom_id="ramane_stock_v4_fix")
+    @discord.ui.button(label="VOIR MON STOCK VIRAL", style=discord.ButtonStyle.primary, custom_id="ramane_stock_v4_fix")
     async def mes_videos(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer(ephemeral=True, thinking=True)
         db = load_db(); mine = db.get(str(interaction.user.id), [])
         if not mine:
-            await interaction.followup.send("Aucune vidéo encore", ephemeral=True); return
+            await interaction.followup.send("Aucune video encore", ephemeral=True); return
         mine_sorted = sorted(mine, key=lambda x: x['views'], reverse=True)
-        embed=discord.Embed(color=0xE1306C, title=f"TON STOCK VIRAL - {len(mine_sorted)} vidéos")
+        embed=discord.Embed(color=0xE1306C, title=f"TON STOCK VIRAL - {len(mine_sorted)} videos")
         txt=""
         for i, p in enumerate(mine_sorted[:20], 1): txt+=f"{i}. {p['views']} vues - {p['url']}\n"
         embed.description=txt[:4000]
@@ -200,11 +193,11 @@ class ViewMesVideos(discord.ui.View):
 
 class ViewPackReels(discord.ui.View):
     def __init__(self): super().__init__(timeout=None)
-    @discord.ui.button(label="🎬 GÉNÉRER 8 PACKS REELS (8 DRIVE + 8 VIRALES)", style=discord.ButtonStyle.success, custom_id="ramane_pack_v4_fix")
+    @discord.ui.button(label="GENERER 8 PACKS REELS (8 DRIVE + 8 VIRALES)", style=discord.ButtonStyle.success, custom_id="ramane_pack_v4_fix")
     async def pack_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer(ephemeral=True, thinking=True)
         try:
-            await interaction.followup.send("Génération en cours...", ephemeral=True)
+            await interaction.followup.send("Generation en cours...", ephemeral=True)
             reels=await get_drive_reels_grouped(interaction.guild)
             descs=await get_descriptions(interaction.guild)
             if len(reels)<8:
@@ -216,7 +209,7 @@ class ViewPackReels(discord.ui.View):
             thread = await salon_out.create_thread(name=f"pack-{interaction.user.name}-{random.randint(100,999)}", auto_archive_duration=60)
             try: await thread.add_user(interaction.user)
             except: pass
-            await interaction.followup.send(f"Pack créé {thread.mention}", ephemeral=True)
+            await interaction.followup.send(f"Pack cree {thread.mention}", ephemeral=True)
             sent=[]; w=await thread.send(f"{interaction.user.mention} **PACK 8 DRIVE + 8 VIRALES US**\n\n__PARTIE 1: 8 PACKS DRIVE__"); sent.append(w)
             for i in range(8):
                 r=reels[i]; d=descs[i] if i < len(descs) else None
@@ -250,38 +243,37 @@ class ViewPackReels(discord.ui.View):
                     except Exception as e: print(e)
             if sent: bot.loop.create_task(delete_after(sent, 15))
         except Exception as e:
-            await interaction.followup.send(f"❌ Erreur pack: {e}", ephemeral=True)
+            await interaction.followup.send(f"Erreur pack: {e}", ephemeral=True)
 
 class ViewPseudosFilles(discord.ui.View):
     def __init__(self): super().__init__(timeout=None)
-    @discord.ui.button(label="🎀 Générer Identité Complète", style=discord.ButtonStyle.primary, custom_id="ramane_pseudo_v4_full")
+    @discord.ui.button(label="Generer Identite Complete", style=discord.ButtonStyle.primary, custom_id="ramane_pseudo_v4_full")
     async def pseudo(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer(ephemeral=True, thinking=True)
         p = random.choice(['sofia','mia','luna','chloe','emma','aria','zoe'])
         s = random.choice(['rose','vibe','bloom','dream'])
         pseudo_base = f"{p}{s}"
-        bio_text = "19 🎀 sweet girl"; photo_url = None; nom_complet = f"{p.capitalize()} {s.capitalize()}"
+        bio_text = "19 sweet girl"; photo_url = None; nom_complet = f"{p.capitalize()} {s.capitalize()}"
         for ch in interaction.guild.text_channels:
             name = ch.name.lower()
-            if not bio_text or bio_text == "19 🎀 sweet girl":
-                if "bio" in name or "description" in name:
-                    async for m in ch.history(limit=30):
-                        if m.content and len(m.content) > 15: bio_text = m.content[:1000]; break
+            if "bio" in name or "description" in name:
+                async for m in ch.history(limit=30):
+                    if m.content and len(m.content) > 15: bio_text = m.content[:1000]; break
             if not photo_url and ("photo" in name or "pdp" in name):
                 async for m in ch.history(limit=100):
                     for att in m.attachments:
                         if att.content_type and "image" in att.content_type: photo_url = att.url; break
-        embed=discord.Embed(color=0xFF69B4, title=f"🎀 Identité pour {nom_complet}")
-        embed.add_field(name="Sans chiffre (recommandé)", value=f"`{pseudo_base}`", inline=False)
-        embed.add_field(name="Avec point", value=f"`{p}.{s}`", inline=False)
-        embed.add_field(name="Avec chiffres", value=f"`{pseudo_base}{random.randint(10,99)}`", inline=False)
-        embed.add_field(name="Bio", value=f"```{bio_text[:1000]}```", inline=False)
+        embed=discord.Embed(color=0xFF69B4, title=f"Identite pour {nom_complet}")
+        embed.add_field(name="Sans chiffre (recommande)", value=f"{pseudo_base}", inline=False)
+        embed.add_field(name="Avec point", value=f"{p}.{s}", inline=False)
+        embed.add_field(name="Avec chiffres", value=f"{pseudo_base}{random.randint(10,99)}", inline=False)
+        embed.add_field(name="Bio", value=f"{bio_text[:1000]}", inline=False)
         if photo_url: embed.set_image(url=photo_url)
         await interaction.followup.send(embed=embed, ephemeral=True)
 
 class ViewNumero(discord.ui.View):
     def __init__(self): super().__init__(timeout=None)
-    @discord.ui.select(placeholder="🌍 Choisis ton pays...", custom_id="ramane_numero_v4_fix", options=[
+    @discord.ui.select(placeholder="Choisis ton pays...", custom_id="ramane_numero_v4_fix", options=[
         discord.SelectOption(label="USA", emoji="🇺🇸", value="usa"),
         discord.SelectOption(label="Canada", emoji="🇨🇦", value="canada"),
         discord.SelectOption(label="UK", emoji="🇬🇧", value="uk"),
@@ -289,9 +281,8 @@ class ViewNumero(discord.ui.View):
     ])
     async def select_pays(self, interaction: discord.Interaction, select: discord.ui.Select):
         await interaction.response.defer(ephemeral=True, thinking=True)
-        await interaction.followup.send(f"✅ Pays choisi: **{select.values[0].upper()}**\nBranche ton API 5sim ici.", ephemeral=True)
+        await interaction.followup.send(f"Pays choisi: {select.values[0].upper()}", ephemeral=True)
 
-# ================= SETUPS =================
 @bot.command()
 async def setupcomptes(ctx):
     if not ctx.author.guild_permissions.administrator: return
@@ -302,9 +293,9 @@ async def setupcomptes(ctx):
             except: pass
     overwrites = {ctx.guild.default_role: discord.PermissionOverwrite(send_messages=False), ctx.guild.me: discord.PermissionOverwrite(send_messages=True)}
     salon=await ctx.guild.create_text_channel(name="comptes-instagram", category=cat, overwrites=overwrites)
-    embed=discord.Embed(color=0xE1306C, title="🔍 Détecteur de Comptes Viraux - Ramane OFM", description="**À QUOI SERT?** Scanner compte Insta et détecter ses reels qui percent.\n**RÔLE:** Analyse direct + filtre US non certifié + stocke vues/desc\n**AVANTAGES:** Que du viral US trié auto\n\n👇 **Bouton rouge**")
+    embed=discord.Embed(color=0xE1306C, title="Detecteur de Comptes Viraux - Ramane OFM", description="A QUOI SERT? Scanner compte Insta et detecter ses reels qui percent.\nROLE: Analyse direct + filtre US non certifie + stocke vues/desc\n\nClique bouton rouge")
     await salon.send(embed=embed, view=ViewScanCompte())
-    await ctx.send(f"OK {salon.mention} ✅")
+    await ctx.send(f"OK {salon.mention}")
 
 @bot.command()
 async def setuppack(ctx):
@@ -316,9 +307,9 @@ async def setuppack(ctx):
             except: pass
     overwrites = {ctx.guild.default_role: discord.PermissionOverwrite(send_messages=False), ctx.guild.me: discord.PermissionOverwrite(send_messages=True)}
     salon=await ctx.guild.create_text_channel(name="packs-reels", category=cat, overwrites=overwrites)
-    embed=discord.Embed(color=0x00FF88, title="🎬 Générateur de Packs Reels - 8 + 8 Viraux", description="**À QUOI SERT?** 1 clic = 16 contenus prêts\n**RÔLE:** 8 Drive + 8 Virales US + vraies MP4 + thread privé\n**AVANTAGES:** 2h économisées\n\n👇 **Bouton vert**")
+    embed=discord.Embed(color=0x00FF88, title="Generateur de Packs Reels - 8 + 8 Viraux", description="A QUOI SERT? 1 clic = 16 contenus prets\nROLE: 8 Drive + 8 Virales US + vraies MP4 + thread prive\n\nBouton vert")
     await salon.send(embed=embed, view=ViewPackReels())
-    await ctx.send(f"OK {salon.mention} ✅")
+    await ctx.send(f"OK {salon.mention}")
 
 @bot.command()
 async def setupviral(ctx):
@@ -330,16 +321,16 @@ async def setupviral(ctx):
             except: pass
     overwrites = {ctx.guild.default_role: discord.PermissionOverwrite(send_messages=False), ctx.guild.me: discord.PermissionOverwrite(send_messages=True)}
     salon=await ctx.guild.create_text_channel(name="mes-videos-virales", category=cat, overwrites=overwrites)
-    embed=discord.Embed(color=0x5865F2, title="📂 Ta Bibliothèque Virale", description="**À QUOI SERT?** Voir ton stock\n**RÔLE:** Garde vidéos scannées + trie par vues\n\n👇 **Bouton bleu**")
+    embed=discord.Embed(color=0x5865F2, title="Ta Bibliotheque Virale", description="A QUOI SERT? Voir ton stock\nROLE: Garde videos scannees + trie par vues\n\nBouton bleu")
     await salon.send(embed=embed, view=ViewMesVideos())
-    await ctx.send(f"OK {salon.mention} ✅")
+    await ctx.send(f"OK {salon.mention}")
 
 @bot.command()
 async def setuppseudo(ctx):
     if not ctx.author.guild_permissions.administrator: return
     for ch in ctx.guild.text_channels:
         if "pseudo" in ch.name.lower():
-            embed=discord.Embed(color=0xFF69B4, title="🎀 Générateur de Pseudos", description="**À QUOI SERT?** Identité fille US\n**RÔLE:** Pseudo + bio + photo + nom\n\n👇 **Clique**")
+            embed=discord.Embed(color=0xFF69B4, title="Generateur de Pseudos", description="A QUOI SERT? Identite fille US\nROLE: Pseudo + bio + photo + nom\n\nClique")
             await ch.send(embed=embed, view=ViewPseudosFilles())
 
 @bot.command()
@@ -347,16 +338,36 @@ async def setupnumero(ctx):
     if not ctx.author.guild_permissions.administrator: return
     for ch in ctx.guild.text_channels:
         if "numero" in ch.name.lower():
-            embed=discord.Embed(color=0x5865F2, title="📞 Générateur de Numéros", description="**À QUOI SERT?** Numéro US/Gmail\n**RÔLE:** Menu pays USA/Canada/UK/Ukraine\n\n👇 **Choisis**")
+            embed=discord.Embed(color=0x5865F2, title="Generateur de Numeros", description="A QUOI SERT? Numero US/Gmail\nROLE: Menu pays USA/Canada/UK/Ukraine\n\nChoisis")
             await ch.send(embed=embed, view=ViewNumero())
 
 @bot.command()
 async def setupall(ctx):
     if not ctx.author.guild_permissions.administrator: return
-    await ctx.send("🚀 Setup complet en cours...")
+    await ctx.send("Setup complet en cours...")
     await setupcomptes(ctx)
     await setuppack(ctx)
     await setupviral(ctx)
     await setuppseudo(ctx)
     await setupnumero(ctx)
-    await ctx.send("✅ **TOUT EST RÉPARÉ - Teste t
+    await ctx.send("TOUT EST REPARE - Teste tes boutons maintenant")
+
+@bot.event
+async def on_ready():
+    print(f"EN LIGNE {NOM_AGENCE}")
+    bot.add_view(ViewScanCompte())
+    bot.add_view(ViewMesVideos())
+    bot.add_view(ViewPackReels())
+    bot.add_view(ViewPseudosFilles())
+    bot.add_view(ViewNumero())
+
+TOKEN = os.getenv("DISCORD_TOKEN")
+if not TOKEN:
+    print("FATAL: DISCORD_TOKEN manquant")
+    app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 10000)))
+else:
+    try:
+        bot.run(TOKEN)
+    except Exception as e:
+        print(f"CRASH DISCORD: {e}")
+        app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 10000)))
