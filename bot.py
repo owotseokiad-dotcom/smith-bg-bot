@@ -6,7 +6,7 @@ import random
 from flask import Flask
 import threading
 
-# --- PATCH RENDER ANTI TIMED OUT (8 lignes) ---
+# --- PATCH RENDER ANTI TIMED OUT ---
 app = Flask(__name__)
 @app.route('/')
 def home(): return "RAMANE BOT ONLINE"
@@ -76,8 +76,23 @@ async def setupusa(ctx):
     embed.add_field(name="📱 Service Instagram USA", value="Bienvenue! Pour obtenir un numéro Instagram :\n\n**1** Cliquez sur 'Prendre un numéro'\n**2** Entrez le numéro sur Instagram et validez.\n**3** Attendez 30 à 60 secondes le SMS.\n**4** Cliquez sur le bouton de vérification.", inline=False)
     await ctx.channel.send(embed=embed, view=ViewNumeroUSA())
 
-# ==================== 2. BOT PSEUDO FILLES - VARIE VRAIMENT ====================
-NOMS_FILLE_OFM = ["Emma Rose","Sophia Lane","Mia Blake","Ava Summers","Isabella Grey","Luna Ray","Chloe Love","Lily Moore","Zoe Carter","Amelia Hart","Harper Quinn","Aria Sky","Ella Mae","Scarlett Rose","Ruby Jane","Mila Grace","Nora Bloom","Avery Reed","Layla Fox","Hazel Moon"]
+# ==================== 2. BOT PSEUDO FILLES - VERSION FINALE CORRIGÉE ====================
+PRENOMS = ["emma","sophia","mia","ava","isabella","luna","chloe","lily","zoe","amelia","harper","aria","ella","scarlett","ruby","mila","nora","avery","layla","hazel","grace","violet","nova","aurora","stella"]
+NOMS = ["rose","lane","blake","summers","grey","ray","love","moore","carter","hart","quinn","sky","mae","jane","bloom","reed","fox","moon","brooks","hayes","wren","james","cole","jade"]
+
+def gen_pseudo_insta():
+    prenom = random.choice(PRENOMS)
+    nom = random.choice(NOMS)
+    num = random.randint(10,99)
+    pseudo = random.choice([
+        f"{prenom}.{nom}{num}",
+        f"{prenom}_{nom}{num}",
+        f"{prenom}.{nom}.{num}",
+        f"its{prenom}{nom}",
+        f"the{prenom}{nom}{num}"
+    ])
+    nom_complet = f"{prenom.capitalize()} {nom.capitalize()}"
+    return nom_complet, pseudo
 
 class ViewPseudoFille(discord.ui.View):
     def __init__(self):
@@ -88,11 +103,10 @@ class ViewPseudoFille(discord.ui.View):
         await interaction.response.defer(ephemeral=True, thinking=True)
         guild = interaction.guild
 
-        # --- CORRIGÉ : SEULEMENT bio ET photo de profil ---
-        bio_channels = [c for c in guild.text_channels if c.name.lower().strip() == "bio"]
-        photo_channels = [c for c in guild.text_channels if c.name.lower().strip() == "photo de profil"]
+        # CORRECTION FINALE : marche avec 👤 • bio et 📷--photo-de-profil
+        bio_channels = [c for c in guild.text_channels if "bio" in c.name.lower()]
+        photo_channels = [c for c in guild.text_channels if "photo-de-profil" in c.name.lower() or "photo de profil" in c.name.lower()]
 
-        # Récupère toutes les bios
         all_bios = []
         for ch in bio_channels:
             try:
@@ -101,7 +115,6 @@ class ViewPseudoFille(discord.ui.View):
                         all_bios.append(m.content)
             except: pass
 
-        # Récupère toutes les photos
         all_photos = []
         for ch in photo_channels:
             try:
@@ -111,7 +124,6 @@ class ViewPseudoFille(discord.ui.View):
                             all_photos.append(att.url)
             except: pass
 
-        # VARIATION - Mélange à chaque fois
         if all_bios:
             random.shuffle(all_bios)
             bio_text = random.choice(all_bios)
@@ -123,21 +135,20 @@ class ViewPseudoFille(discord.ui.View):
             random.shuffle(all_photos)
             photo_url = random.choice(all_photos)
 
-        nom = random.choice(NOMS_FILLE_OFM)
+        nom_complet, pseudo_insta = gen_pseudo_insta()
 
-        embed = discord.Embed(color=0xFF69B4, title=f"🎀 Pack Profil - {nom}")
-        embed.add_field(name="👩 Nom complet OFM", value=f"`{nom}`", inline=False)
+        embed = discord.Embed(color=0xFF69B4, title=f"🎀 Pack Profil - {nom_complet}")
+        embed.add_field(name="👩 Nom complet OFM", value=f"`{nom_complet}`", inline=False)
+        embed.add_field(name="✅ Pseudo Instagram (jamais utilisé)", value=f"`{pseudo_insta}`", inline=False)
         embed.add_field(name="📝 Bio aléatoire", value=bio_text[:1000], inline=False)
         if photo_url:
             embed.set_image(url=photo_url)
-            embed.add_field(name="🖼️ Photo aléatoire", value=f"✅ {len(all_photos)} photos trouvées dans #photo-de-profil - choix aléatoire", inline=False)
+            embed.add_field(name="🖼️ Photo aléatoire", value=f"✅ {len(all_photos)} photos trouvées dans #photo-de-profil", inline=False)
         else:
             embed.add_field(name="🖼️ Photo", value=f"❌ Aucune photo trouvée dans #photo-de-profil", inline=False)
 
-        # Envoi - RESTE POUR TOUJOURS, PAS DE SUPPRESSION
         await interaction.followup.send(embed=embed, ephemeral=True)
 
-        # Envoi au boss/manager
         for member in guild.members:
             if any(r.name.lower() in ["boss","manager","team leader"] for r in member.roles) or member.guild_permissions.administrator:
                 if member.id!= interaction.user.id:
@@ -155,8 +166,9 @@ async def setuppseudo(ctx):
         "**BIENVENUE - LIS BIEN ✅**\n\n"
         "Ce bouton te génère un pack complet en 1 clic :\n\n"
         "👩 **1. Nom de fille OFM** → prénom + nom US aléatoire\n"
-        "📝 **2. Bio Insta** → prise au HASARD uniquement dans #bio\n"
-        "🖼️ **3. Photo de profil** → prise au HASARD uniquement dans #photo-de-profil\n\n"
+        "✅ **2. Pseudo Insta qui passe** → jamais utilisé\n"
+        "📝 **3. Bio Insta** → prise au HASARD uniquement dans #bio\n"
+        "🖼️ **4. Photo de profil** → prise au HASARD uniquement dans #photo-de-profil\n\n"
         "🔁 À chaque clic ça change, tu n'auras jamais 2 fois la même chose\n"
         "🔒 Seule toi vois ton pack + Boss/Manager\n\n"
         "👇 **CLIQUE SUR LE BOUTON EN DESSOUS**"
