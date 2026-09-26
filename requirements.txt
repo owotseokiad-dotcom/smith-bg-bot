@@ -1,7 +1,5 @@
 discord.py
 Flask
 requests
-yt-dlp
 google-api-python-client
-google-auth
 yt-dlp
