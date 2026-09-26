@@ -88,9 +88,9 @@ class ViewPseudoFille(discord.ui.View):
         await interaction.response.defer(ephemeral=True, thinking=True)
         guild = interaction.guild
 
-        # Trouve TOUS les salons bio et photo
-        bio_channels = [c for c in guild.text_channels if "bio" in c.name.lower()]
-        photo_channels = [c for c in guild.text_channels if ("photo" in c.name.lower() or "pdp" in c.name.lower() or "profil" in c.name.lower()) and "bio" not in c.name.lower() and "numero" not in c.name.lower()]
+        # --- CORRIGÉ : SEULEMENT bio ET photo de profil ---
+        bio_channels = [c for c in guild.text_channels if c.name.lower().strip() == "bio"]
+        photo_channels = [c for c in guild.text_channels if c.name.lower().strip() == "photo de profil"]
 
         # Récupère toutes les bios
         all_bios = []
@@ -116,9 +116,9 @@ class ViewPseudoFille(discord.ui.View):
             random.shuffle(all_bios)
             bio_text = random.choice(all_bios)
         else:
-            bio_text = "❌ Aucune bio trouvée, ajoute des bios dans tes salons bio"
+            bio_text = "❌ Aucune bio trouvée, ajoute des bios dans #bio"
 
-        photo_url = random.choice(all_photos) if all_photos else None
+        photo_url = None
         if all_photos:
             random.shuffle(all_photos)
             photo_url = random.choice(all_photos)
@@ -130,9 +130,9 @@ class ViewPseudoFille(discord.ui.View):
         embed.add_field(name="📝 Bio aléatoire", value=bio_text[:1000], inline=False)
         if photo_url:
             embed.set_image(url=photo_url)
-            embed.add_field(name="🖼️ Photo aléatoire", value=f"{len(all_photos)} photos trouvées - choix aléatoire", inline=False)
+            embed.add_field(name="🖼️ Photo aléatoire", value=f"✅ {len(all_photos)} photos trouvées dans #photo-de-profil - choix aléatoire", inline=False)
         else:
-            embed.add_field(name="🖼️ Photo", value=f"❌ Aucune photo trouvée ({len(photo_channels)} salons scannés)", inline=False)
+            embed.add_field(name="🖼️ Photo", value=f"❌ Aucune photo trouvée dans #photo-de-profil", inline=False)
 
         # Envoi - RESTE POUR TOUJOURS, PAS DE SUPPRESSION
         await interaction.followup.send(embed=embed, ephemeral=True)
@@ -151,7 +151,16 @@ async def setuppseudo(ctx):
     try: await ctx.channel.set_permissions(ctx.guild.default_role, send_messages=False)
     except: pass
     embed = discord.Embed(color=0xFF69B4, title="🎀 GÉNÉRATEUR DE PROFILS OFM - RAMANE AGENCY")
-    embed.description = "**BIENVENUE**\n\nCe bot donne:\n**1️⃣ Nom de fille OFM**\n**2️⃣ Bio** prise au HASARD dans tous tes salons bio\n**3️⃣ Photo** prise au HASARD dans tous tes salons photo\n\n🔒 Visible seulement par toi + Boss/Manager\n👇 **CLIQUE**"
+    embed.description = (
+        "**BIENVENUE - LIS BIEN ✅**\n\n"
+        "Ce bouton te génère un pack complet en 1 clic :\n\n"
+        "👩 **1. Nom de fille OFM** → prénom + nom US aléatoire\n"
+        "📝 **2. Bio Insta** → prise au HASARD uniquement dans #bio\n"
+        "🖼️ **3. Photo de profil** → prise au HASARD uniquement dans #photo-de-profil\n\n"
+        "🔁 À chaque clic ça change, tu n'auras jamais 2 fois la même chose\n"
+        "🔒 Seule toi vois ton pack + Boss/Manager\n\n"
+        "👇 **CLIQUE SUR LE BOUTON EN DESSOUS**"
+    )
     await ctx.channel.send(embed=embed, view=ViewPseudoFille())
 
 # ==================== COMMANDES STOCK ====================
