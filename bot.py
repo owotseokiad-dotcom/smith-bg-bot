@@ -1,11 +1,11 @@
 from flask import Flask
 import threading
-import os, discord, requests, random, re, time, tempfile
+import os, discord, requests, random, re, time, yt_dlp, tempfile, asyncio
 from discord.ext import commands
 
 app = Flask(__name__)
 @app.route('/')
-def home(): return "RAMANE OFM EN LIGNE - OK"
+def home(): return "RAMANE OFM EN LIGNE"
 def run_web(): app.run(host='0.0.0.0', port=10000)
 threading.Thread(target=run_web, daemon=True).start()
 
@@ -41,6 +41,7 @@ def generer_pseudo_inutilise():
     return f"{p}{s}{l}"
 
 def extract_file_id(url):
+    import re
     m = re.search(r'/file/d/([a-zA-Z0-9-_]+)', url)
     if m: return m.group(1)
     m = re.search(r'/folders/([a-zA-Z0-9-_]+)', url)
@@ -48,25 +49,30 @@ def extract_file_id(url):
     m = re.search(r'id=([a-zA-Z0-9-_]+)', url)
     return m.group(1) if m else None
 
-async def get_drive_reels(guild):
-    reels=[]
-    for ch in guild.text_channels:
-        if "drive" in ch.name.lower():
-            async for m in ch.history(limit=500):
-                for att in m.attachments:
-                    if att.content_type and "video" in att.content_type:
-                        reels.append({'type': 'discord', 'url': att.url, 'name': att.filename})
-                if "drive.google.com" in m.content:
-                    urls = re.findall(r'https?://drive\.google\.com/\S+', m.content)
-                    for url in urls:
-                        fid = extract_file_id(url)
-                        if fid:
-                            if "/folders/" in url: reels.append({'type': 'folder', 'id': fid})
-                            else: reels.append({'type': 'drive_file', 'id': fid, 'name': f"{fid}.mp4"})
+async def get_drive_reels_grouped(guild):
+    # CORRECTION: prend 1 seul salon drive au hasard = 1 seul modèle
+    salons_drive = [ch for ch in guild.text_channels if "drive" in ch.name.lower()]
+    if not salons_drive:
+        return []
 
-    # Expand folders avec API KEY
+    salon_choisi = random.choice(salons_drive)
+    print(f"Salon choisi pour ce pack: {salon_choisi.name}")
+
+    reels=[]
+    async for m in salon_choisi.history(limit=500):
+        for att in m.attachments:
+            if att.content_type and "video" in att.content_type:
+                reels.append({'type': 'discord', 'url': att.url, 'name': att.filename})
+        if "drive.google.com" in m.content:
+            urls = re.findall(r'https?://drive\.google\.com/\S+', m.content)
+            for url in urls:
+                fid = extract_file_id(url)
+                if fid:
+                    if "/folders/" in url: reels.append({'type': 'folder', 'id': fid})
+                    else: reels.append({'type': 'drive_file', 'id': fid, 'name': f"{fid}.mp4"})
+
     api_key = os.getenv("GOOGLE_API_KEY")
-    if api_key and any(r['type']=='folder' for r in reels):
+    if api_key:
         try:
             from googleapiclient.discovery import build
             service = build('drive', 'v3', developerKey=api_key)
@@ -81,7 +87,7 @@ async def get_drive_reels(guild):
             return expanded
         except Exception as e:
             print(f"Erreur Drive API: {e}")
-            return [r for r in reels if r['type']!='folder']
+            pass
     return reels
 
 async def get_descriptions(guild):
@@ -93,21 +99,26 @@ async def get_descriptions(guild):
     return descs
 
 def download_gdrive_file_sync(file_id):
-    # version non-bloquante pour Render
     url = f"https://drive.google.com/uc?export=download&id={file_id}"
     tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4")
     session = requests.Session()
     r = session.get(url, stream=True)
-    # gestion gros fichier avec token
     for k,v in r.cookies.items():
         if k.startswith('download_warning'):
             url = f"https://drive.google.com/uc?export=download&confirm={v}&id={file_id}"
             r = session.get(url, stream=True)
             break
+    r.raise_for_status()
     for chunk in r.iter_content(1024*1024):
         if chunk: tmp.write(chunk)
     tmp.close()
     return tmp.name
+
+async def delete_after(messages, minutes=15):
+    await asyncio.sleep(minutes*60)
+    for msg in messages:
+        try: await msg.delete()
+        except: pass
 
 class ViewPseudosFilles(discord.ui.View):
     def __init__(self): super().__init__(timeout=None)
@@ -127,42 +138,42 @@ class ViewPackReels(discord.ui.View):
     @discord.ui.button(label="🎯 Générer 8 Packs", style=discord.ButtonStyle.success, custom_id="btn_pack_reels_final_v3", emoji="🎬")
     async def pack_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer(ephemeral=True)
-        await interaction.followup.send("⏳ Je cherche 8 vidéos + 8 descriptions... (10-20s)", ephemeral=True)
-
-        reels=await get_drive_reels(interaction.guild); descs=await get_descriptions(interaction.guild)
-
+        await interaction.followup.send("⏳ Je cherche 8 vidéos du MÊME modèle (même salon drive)...", ephemeral=True)
+        reels=await get_drive_reels_grouped(interaction.guild); descs=await get_descriptions(interaction.guild)
         if len(reels)<8 or len(descs)<8:
-            await interaction.followup.send(f"❌ Pas assez: {len(reels)}/8 vidéos, {len(descs)}/8 descriptions. Ajoute dans salons #drive et #description", ephemeral=True)
-            return
-
+            await interaction.followup.send(f"❌ Pas assez: {len(reels)}/8 vidéos dans ce modèle, {len(descs)}/8 desc. Mets au moins 8 vidéos par salon drive.", ephemeral=True); return
         random.shuffle(reels); random.shuffle(descs)
+        reels = reels[:8]
         salon_out=discord.utils.get(interaction.guild.text_channels, name="🎯┃packs-reels")
         if not salon_out:
             salon_out = interaction.channel
-
+        await interaction.followup.send(f"✅ 8 VIDÉOS DU MÊME MODÈLE dans {salon_out.mention} - Suppression auto dans 15 min", ephemeral=True)
+        sent_messages = []
         for i in range(8):
             r=reels[i]; d=descs[i]
             try:
                 if r['type'] == 'discord':
                     data = await bot.loop.run_in_executor(None, lambda: requests.get(r['url']).content)
                     tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4"); tmp.write(data); tmp.close()
-                    embed=discord.Embed(color=0x00FF88, title=f"PACK {i+1}/8")
-                    embed.add_field(name="📝 DESCRIPTION", value=d.content[:1024], inline=False)
-                    await salon_out.send(embed=embed, file=discord.File(tmp.name, filename=r['name']))
+                    embed=discord.Embed(color=0x00FF88, title=f"PACK {i+1}/8 - ⚠️ Suppression 15 min"); embed.add_field(name="📝 DESCRIPTION", value=d.content[:1024], inline=False)
+                    msg = await salon_out.send(embed=embed, file=discord.File(tmp.name, filename=r['name']))
+                    sent_messages.append(msg)
                     os.unlink(tmp.name)
                 else:
                     path = await bot.loop.run_in_executor(None, lambda: download_gdrive_file_sync(r['id']))
-                    embed=discord.Embed(color=0x00FF88, title=f"PACK {i+1}/8 - VIDÉO DIRECTE")
-                    embed.add_field(name="📝 DESCRIPTION", value=d.content[:1024], inline=False)
-                    await salon_out.send(embed=embed, file=discord.File(path, filename=r.get('name', f"reel_{i+1}.mp4")))
+                    embed=discord.Embed(color=0x00FF88, title=f"PACK {i+1}/8 - VIDÉO DIRECTE - ⚠️ Suppression 15 min"); embed.add_field(name="📝 DESCRIPTION", value=d.content[:1024], inline=False)
+                    msg = await salon_out.send(embed=embed, file=discord.File(path, filename=r.get('name', f"reel_{i+1}.mp4")))
+                    sent_messages.append(msg)
                     os.unlink(path)
             except Exception as e:
-                print(f"Erreur pack {i+1}: {e}")
-                await salon_out.send(f"❌ Erreur vidéo {i+1}: {e}\nDesc: {d.content[:500]}")
+                print(e)
+
+        if sent_messages:
+            bot.loop.create_task(delete_after(sent_messages, 15))
 
 @bot.event
 async def on_ready():
-    print(f"✅ {NOM_AGENCE} EN LIGNE - {bot.user}")
+    print(f"✅ {NOM_AGENCE} EN LIGNE")
     bot.add_view(ViewPseudosFilles()); bot.add_view(ViewPackReels())
 
 @bot.command()
@@ -174,7 +185,7 @@ async def setuppack(ctx):
             try: await ch.delete()
             except: pass
     salon=await ctx.guild.create_text_channel(name="🎯┃packs-reels", category=cat)
-    await salon.send(embed=discord.Embed(color=0x00FF88, title="🎯 PACKS REELS - VIDÉO DIRECTE", description="Clique = 8 vidéos sans lien + 8 desc"), view=ViewPackReels())
+    await salon.send(embed=discord.Embed(color=0x00FF88, title="🎯 PACKS REELS - VIDÉO DIRECTE", description="Clique = 8 vidéos MÊME modèle + auto-delete 15 min"), view=ViewPackReels())
     await ctx.send(f"✅ {salon.mention}")
 
 @bot.command()
@@ -184,5 +195,10 @@ async def setupfilles(ctx):
     salon=discord.utils.get(ctx.guild.text_channels, name="🎀┃pseudos-filles") or await ctx.guild.create_text_channel(name="🎀┃pseudos-filles", category=cat)
     await salon.send(embed=discord.Embed(color=0xFF69B4, title="🎀 Générateur d'identités"), view=ViewPseudosFilles())
     await ctx.send(f"✅ {salon.mention}")
+
+@bot.event
+async def on_message(message):
+    if message.author.bot: await bot.process_commands(message); return
+    await bot.process_commands(message)
 
 bot.run(os.getenv("DISCORD_TOKEN"))
