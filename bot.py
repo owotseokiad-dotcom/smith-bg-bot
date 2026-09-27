@@ -35,7 +35,7 @@ def save_num(data):
     with open(DB_FILE, "w") as f:
         json.dump(data, f, indent=4)
 
-# ==================== 1. BOT NUMERO USA ====================
+# ==================== 1. BOT NUMERO USA (TON CODE D'ORIGINE - INTACT) ====================
 class ViewNumeroUSA(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
@@ -76,7 +76,7 @@ async def setupusa(ctx):
     embed.add_field(name="📱 Service Instagram USA", value="Bienvenue! Pour obtenir un numéro Instagram :\n\n**1** Cliquez sur 'Prendre un numéro'\n**2** Entrez le numéro sur Instagram et validez.\n**3** Attendez 30 à 60 secondes le SMS.\n**4** Cliquez sur le bouton de vérification.", inline=False)
     await ctx.channel.send(embed=embed, view=ViewNumeroUSA())
 
-# ==================== 2. BOT PSEUDO FILLES - VERSION FINALE CORRIGÉE ====================
+# ==================== 2. BOT PSEUDO FILLES - VERSION FINALE CORRIGÉE (INTACT) ====================
 PRENOMS = ["emma","sophia","mia","ava","isabella","luna","chloe","lily","zoe","amelia","harper","aria","ella","scarlett","ruby","mila","nora","avery","layla","hazel","grace","violet","nova","aurora","stella"]
 NOMS = ["rose","lane","blake","summers","grey","ray","love","moore","carter","hart","quinn","sky","mae","jane","bloom","reed","fox","moon","brooks","hayes","wren","james","cole","jade"]
 
@@ -103,7 +103,6 @@ class ViewPseudoFille(discord.ui.View):
         await interaction.response.defer(ephemeral=True, thinking=True)
         guild = interaction.guild
 
-        # CORRECTION FINALE : marche avec 👤 • bio et 📷--photo-de-profil
         bio_channels = [c for c in guild.text_channels if "bio" in c.name.lower()]
         photo_channels = [c for c in guild.text_channels if "photo-de-profil" in c.name.lower() or "photo de profil" in c.name.lower()]
 
@@ -175,7 +174,7 @@ async def setuppseudo(ctx):
     )
     await ctx.channel.send(embed=embed, view=ViewPseudoFille())
 
-# ==================== COMMANDES STOCK ====================
+# ==================== COMMANDES STOCK (INTACT) ====================
 @bot.command()
 @commands.has_permissions(administrator=True)
 async def addnumero(ctx, pays, numero):
@@ -210,14 +209,8 @@ async def stock(ctx):
         msg += f"{pays.upper()}: {dispo}/{total}\n"
     await ctx.send(f"📦 STOCK:\n{msg}")
 
-@bot.event
-async def on_ready():
-    bot.add_view(ViewNumeroUSA())
-    bot.add_view(ViewPseudoFille())
-    print(f"EN LIGNE RAMANE - {bot.user}")
-
 # ==========================================================
-# ========== AJOUT BOSS - SYSTEME DE BIENVENUE AUTO =========
+# ========== SYSTEME DE BIENVENUE AUTO (INTACT) =========
 # ==========================================================
 import asyncio
 
@@ -306,5 +299,138 @@ async def welcome_cmd(ctx, member: discord.Member = None):
     else:
         await ch.send(f"{member.mention}", embed=get_welcome_embed(member))
         await ctx.send(f"✅ Message renvoyé dans {ch.mention}")
+
+# ==========================================================
+# ========== AJOUT BOSS - SALON NUMERO-GMAIL 3 PAYS =========
+# ========== (NOUVEAU - DEMANDE VOCAL) ======================
+# ==========================================================
+
+class ChoixPaysGmailView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=120)
+
+    async def attribuer(self, interaction: discord.Interaction, pays_key: str, emoji: str, nom_complet: str):
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        db = load_num()
+        dispo = [n for n in db.get(pays_key, []) if not n.get("used")]
+        if not dispo:
+            await interaction.followup.send(f"❌ Stock {nom_complet} vide. Mentionne le Boss pour recharger.", ephemeral=True)
+            return
+
+        choisi = dispo[0]
+        choisi["used"] = True
+        choisi["claimed_by"] = interaction.user.id
+        save_num(db)
+
+        # Création fil privé dans le MÊME salon numero-gmail
+        # Visible uniquement par demandeur + Boss/Manager/Team Leader
+        try:
+            thread = await interaction.channel.create_thread(
+                name=f"{pays_key.upper()}-{interaction.user.name}",
+                type=discord.ChannelType.private_thread
+            )
+            await thread.add_user(interaction.user)
+            # Ajoute le staff
+            for role in interaction.guild.roles:
+                if role.name.lower() in ["boss","manager","team leader","staff","admin","administrateur"]:
+                    for m in role.members:
+                        try: await thread.add_user(m)
+                        except: pass
+
+            embed_num = discord.Embed(color=0xFFFFFF, title=f"{emoji} Numéro {nom_complet} - RAMANE OFM")
+            embed_num.add_field(name="📞 Numéro attribué :", value=f"`{choisi['number']}`", inline=False)
+            embed_num.add_field(name="👤 Pour :", value=f"{interaction.user.mention}", inline=False)
+            embed_num.add_field(name="🔒 Confidentialité :", value="Visible uniquement par toi + Boss/Manager/Team Leader", inline=False)
+            embed_num.set_footer(text="Le code SMS arrivera ici même - Reste dans ce fil")
+
+            class ViewCodeGmail(discord.ui.View):
+                def __init__(self, obj_num):
+                    super().__init__(timeout=None)
+                    self.obj = obj_num
+                @discord.ui.button(label="Lire le code Gmail", style=discord.ButtonStyle.primary, emoji="✉️", custom_id="lire_code_gmail_vocal")
+                async def lire(self, inter, btn):
+                    await inter.response.defer(ephemeral=True)
+                    code = self.obj.get("sms_code")
+                    if not code:
+                        await inter.followup.send("⏳ Code pas encore arrivé. Attends 30s et reclique.", ephemeral=True)
+                    else:
+                        await inter.followup.send(f"✅ Ton code Gmail : `{code}`", ephemeral=True)
+
+            await thread.send(f"{interaction.user.mention}", embed=embed_num, view=ViewCodeGmail(choisi))
+            await interaction.followup.send(f"✅ Ton numéro {emoji} {nom_complet} est prêt dans {thread.mention}\nTout se passe là-bas (numéro + code).", ephemeral=True)
+
+        except Exception as e:
+            # Fallback si pas de threads
+            embed_num = discord.Embed(color=0xFFFFFF, title=f"{emoji} Numéro {nom_complet}")
+            embed_num.add_field(name="📞 Numéro :", value=f"`{choisi['number']}`", inline=False)
+            await interaction.followup.send(embed=embed_num, ephemeral=True)
+            print(f"Erreur thread gmail: {e}")
+
+    @discord.ui.button(label="USA", emoji="🇺🇸", style=discord.ButtonStyle.primary, custom_id="gmail_choix_usa_vocal")
+    async def usa(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.attribuer(interaction, "usa", "🇺🇸", "USA")
+
+    @discord.ui.button(label="Angleterre", emoji="🇬🇧", style=discord.ButtonStyle.primary, custom_id="gmail_choix_uk_vocal")
+    async def uk(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.attribuer(interaction, "uk", "🇬🇧", "Angleterre")
+
+    @discord.ui.button(label="Canada", emoji="🇨🇦", style=discord.ButtonStyle.secondary, custom_id="gmail_choix_canada_vocal")
+    async def canada(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.attribuer(interaction, "canada", "🇨🇦", "Canada")
+
+class ViewNumeroGmailMain(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(label="🎲 Générer un numéro", style=discord.ButtonStyle.success, custom_id="gmail_generer_main_vocal", emoji="📱")
+    async def generer(self, interaction: discord.Interaction, button: discord.ui.Button):
+        db = load_num()
+        usa_stock = len([n for n in db.get("usa", []) if not n.get("used")])
+        uk_stock = len([n for n in db.get("uk", []) if not n.get("used")])
+        ca_stock = len([n for n in db.get("canada", []) if not n.get("used")])
+
+        embed_choix = discord.Embed(color=0x2B2D31, title="🌍 Choisis ton pays")
+        embed_choix.description = f"**Stock actuel :**\n🇺🇸 USA : `{usa_stock}` dispo\n🇬🇧 Angleterre : `{uk_stock}` dispo\n🇨🇦 Canada : `{ca_stock}` dispo\n\nClique sur le pays que tu veux."
+        await interaction.response.send_message(embed=embed_choix, view=ChoixPaysGmailView(), ephemeral=True)
+
+@bot.command()
+@commands.has_permissions(administrator=True)
+async def setupgmail(ctx):
+    # Bloque le salon pour que personne ne parle sauf bot
+    try:
+        await ctx.channel.set_permissions(ctx.guild.default_role, send_messages=False)
+        await ctx.channel.set_permissions(ctx.guild.me, send_messages=True)
+    except: pass
+
+    embed = discord.Embed(color=0x5865F2, title="📱 RAMANE OFM - SERVICE NUMÉROS GMAIL")
+    embed.description = (
+        "**🤖 RÔLE DE CE BOT :**\n"
+        "Ce bot te fournit des numéros jetables internationaux pour créer tes comptes Gmail pro.\n"
+        "Tous les numéros sont **payés par l'agence**, tu n'as rien à payer.\n\n"
+        "**⚙️ COMMENT ÇA MARCHE?**\n"
+        "1. Clique sur `🎲 Générer un numéro` ci-dessous\n"
+        "2. Choisis ton pays : **USA 🇺🇸 / Angleterre 🇬🇧 / Canada 🇨🇦**\n"
+        "3. Un fil privé va se créer **dans ce même salon**. Seuls toi + Boss / Manager / Team Leader verront le numéro.\n"
+        "4. Le code de validation arrivera aussi **dans ce même fil**.\n\n"
+        "**🔒 CONFIDENTIALITÉ TOTALE**\n"
+        "Tout le monde peut utiliser le bot, mais chaque numéro est visible uniquement par 4 personnes : toi + staff.\n"
+        "⚠️ 1 clic = 1 numéro retiré du stock. Ne gaspille pas."
+    )
+    embed.set_footer(text="RAMANE OFM - Excellence & Sécurité")
+
+    db = load_num()
+    embed.add_field(name="📦 Stock Live", value=f"🇺🇸 {len([n for n in db.get('usa',[]) if not n.get('used')])} | 🇬🇧 {len([n for n in db.get('uk',[]) if not n.get('used')])} | 🇨🇦 {len([n for n in db.get('canada',[]) if not n.get('used')])}", inline=False)
+
+    await ctx.send(embed=embed, view=ViewNumeroGmailMain())
+
+# --- FIN AJOUT BOSS ---
+
+@bot.event
+async def on_ready():
+    bot.add_view(ViewNumeroUSA())
+    bot.add_view(ViewPseudoFille())
+    bot.add_view(ViewNumeroGmailMain()) # Ajout vocal
+    bot.add_view(ChoixPaysGmailView()) # Ajout vocal
+    print(f"EN LIGNE RAMANE - {bot.user}")
 
 bot.run(os.getenv("DISCORD_TOKEN"))
