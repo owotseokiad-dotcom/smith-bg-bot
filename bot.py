@@ -216,4 +216,95 @@ async def on_ready():
     bot.add_view(ViewPseudoFille())
     print(f"EN LIGNE RAMANE - {bot.user}")
 
+# ==========================================================
+# ========== AJOUT BOSS - SYSTEME DE BIENVENUE AUTO =========
+# ==========================================================
+import asyncio
+
+def get_welcome_embed(member):
+    embed = discord.Embed(title=f"Bienvenue {member.display_name} chez RAMANE OFM 👑", color=0xFF1493)
+    embed.description = f"""
+{member.mention} Bienvenue, ceci est **ta discussion privée**. Seul toi et le staff voyez ce salon.
+
+**🏢 PRESENTATION AGENCE :**
+Bienvenue chez Ramane OFM Agency. On est une agence OFM / MYM. Toi tu fournis le contenu, nous on gère tout : tchat, vente, promo, stratégie.
+
+**📁 EXPLICATION DES SALONS :**
+🔒・**Ici (ta discussion)** → Ton suivi perso, tes paiements, tes questions
+📢・**#annonces** → Infos importantes
+📸・**#contenu-a-envoyer / #bio / #photo-de-profil** → Dépôt de contenu
+💸・**#paiements** → Tes virements
+💬・**#discussion-generale** → Parler avec les autres
+🆘・**#support** → Bug / problème
+🇺🇸・**#numero-us-app** → Numéros Insta USA
+🎀・**#pseudo** → Générateur de profils
+
+**👉 QUE FAIRE MAINTENANT?**
+1. Lis les épinglés dans #annonces
+2. Présente toi ICI : pseudo + ce que tu fais
+3. Envoie ton contenu du jour
+Le staff va te prendre en charge.
+"""
+    if member.display_avatar:
+        embed.set_thumbnail(url=member.display_avatar.url)
+    return embed
+
+def find_private_category(guild):
+    for cat in guild.categories:
+        low = cat.name.lower()
+        if "discussion" in low or "privee" in low or "privée" in low or "ticket" in low:
+            return cat
+    return None
+
+@bot.listen('on_member_join')
+async def auto_create_discussion(member):
+    if member.bot: return
+    await asyncio.sleep(2)
+    guild = member.guild
+    category = find_private_category(guild)
+    channel_name = f"privee-{member.name.lower()}"[:90].replace(" ", "-")
+    if discord.utils.get(guild.channels, name=channel_name):
+        return
+    overwrites = {
+        guild.default_role: discord.PermissionOverwrite(read_messages=False),
+        member: discord.PermissionOverwrite(read_messages=True, send_messages=True, read_message_history=True, attach_files=True),
+        guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True)
+    }
+    for role in guild.roles:
+        if role.name.lower() in ["boss","manager","team leader","staff","admin","administrateur"]:
+            overwrites[role] = discord.PermissionOverwrite(read_messages=True, send_messages=True)
+    try:
+        channel = await guild.create_text_channel(name=channel_name, category=category, overwrites=overwrites, topic=f"Discussion privée de {member.display_name} | ID: {member.id}")
+        await channel.send(f"{member.mention}", embed=get_welcome_embed(member))
+        print(f"[WELCOME] Discussion créée pour {member}")
+    except Exception as e:
+        print(f"[WELCOME ERREUR] {e}")
+
+@bot.command(name="rattrapage")
+@commands.has_permissions(administrator=True)
+async def rattrapage(ctx):
+    await ctx.send("⏳ Je check les membres sans discussion...")
+    count = 0
+    for m in ctx.guild.members:
+        if m.bot: continue
+        name = f"privee-{m.name.lower()}"[:90].replace(" ", "-")
+        if not discord.utils.get(ctx.guild.channels, name=name):
+            await auto_create_discussion(m)
+            count += 1
+            await asyncio.sleep(1)
+    await ctx.send(f"✅ Boss {count} discussions créées.")
+
+@bot.command(name="welcome")
+@commands.has_permissions(administrator=True)
+async def welcome_cmd(ctx, member: discord.Member = None):
+    if member is None: member = ctx.author
+    name = f"privee-{member.name.lower()}"[:90].replace(" ", "-")
+    ch = discord.utils.get(ctx.guild.channels, name=name)
+    if not ch:
+        await ctx.send("❌ Pas de discussion, je crée...")
+        await auto_create_discussion(member)
+    else:
+        await ch.send(f"{member.mention}", embed=get_welcome_embed(member))
+        await ctx.send(f"✅ Message renvoyé dans {ch.mention}")
+
 bot.run(os.getenv("DISCORD_TOKEN"))
